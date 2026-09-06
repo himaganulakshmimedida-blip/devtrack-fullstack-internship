@@ -17,6 +17,16 @@ function Tasks({ username, onLogout }) {
 }, [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
+  const filteredTasks = tasks.filter((task) => {
+  const matchesSearch =
+    task.title.toLowerCase().includes(search.toLowerCase()) ||
+    task.project.toLowerCase().includes(search.toLowerCase())
+
+  const matchesStatus =
+    statusFilter === 'All' || task.status === statusFilter
+
+  return matchesSearch && matchesStatus
+})
 
   const [showForm, setShowForm] = useState(false)
 
