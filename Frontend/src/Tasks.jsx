@@ -1,39 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
 import TaskCard from './components/TaskCard'
+const API_URL = 'https://backend-omega-wheat-ny2fuey01d.vercel.app/api'
 
 function Tasks({ username, onLogout }) {
-  const [tasks, setTasks] = useState([
-    {
-      id: 1,
-      title: 'Create Login Page',
-      project: 'Portfolio Website',
-      priority: 'High',
-      status: 'Done',
-    },
-    {
-      id: 2,
-      title: 'Design Database',
-      project: 'E-Commerce Website',
-      priority: 'Medium',
-      status: 'In Progress',
-    },
-    {
-      id: 3,
-      title: 'Build Product Page',
-      project: 'E-Commerce Website',
-      priority: 'Low',
-      status: 'Todo',
-    },
-    {
-      id: 4,
-      title: 'Create Dashboard UI',
-      project: 'Task Management App',
-      priority: 'High',
-      status: 'In Progress',
-    },
-  ])
-
+  const [tasks, setTasks] = useState([])
+  useEffect(() => {
+  fetch(`${API_URL}/tasks`)
+    .then((response) => response.json())
+    .then((data) => {
+      setTasks(data)
+    })
+    .catch((error) => {
+      console.error('Error loading tasks:', error)
+    })
+}, [])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
 
@@ -44,21 +25,33 @@ function Tasks({ username, onLogout }) {
   const [taskPriority, setTaskPriority] = useState('Medium')
   const [taskStatus, setTaskStatus] = useState('Todo')
 
-  const handleCreateTask = (e) => {
-    e.preventDefault()
+  const handleCreateTask = async (e) => {
+  e.preventDefault()
 
-    if (!taskTitle.trim()) {
-      alert('Please enter a task title.')
-      return
+  if (!taskTitle.trim()) {
+    alert('Please enter a task title.')
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/tasks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: taskTitle,
+        project: taskProject,
+        priority: taskPriority,
+        status: taskStatus,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to create task')
     }
 
-    const newTask = {
-      id: Date.now(),
-      title: taskTitle,
-      project: taskProject,
-      priority: taskPriority,
-      status: taskStatus,
-    }
+    const newTask = await response.json()
 
     setTasks((previousTasks) => [
       ...previousTasks,
@@ -70,19 +63,11 @@ function Tasks({ username, onLogout }) {
     setTaskPriority('Medium')
     setTaskStatus('Todo')
     setShowForm(false)
+  } catch (error) {
+    console.error('Error creating task:', error)
+    alert('Unable to create task. Please try again.')
   }
-
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch = task.title
-      .toLowerCase()
-      .includes(search.toLowerCase())
-
-    const matchesStatus =
-      statusFilter === 'All' || task.status === statusFilter
-
-    return matchesSearch && matchesStatus
-  })
-
+}
   return (
     <div className="app">
 

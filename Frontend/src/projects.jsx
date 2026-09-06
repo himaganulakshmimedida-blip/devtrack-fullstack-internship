@@ -1,50 +1,48 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
+const API_URL = 'https://backend-omega-wheat-ny2fuey01d.vercel.app/api'
 
 function Projects({ username, onLogout }) {
-  const [projects, setProjects] = useState([
-    {
-      id: 1,
-      name: 'Portfolio Website',
-      description: 'Build and deploy a personal portfolio.',
-      progress: 75,
-      status: 'In Progress',
-    },
-    {
-      id: 2,
-      name: 'E-Commerce Website',
-      description: 'Develop an online shopping platform.',
-      progress: 45,
-      status: 'In Progress',
-    },
-    {
-      id: 3,
-      name: 'Task Management App',
-      description: 'Create a productivity and task management system.',
-      progress: 100,
-      status: 'Completed',
-    },
-  ])
-
+ const [projects, setProjects] = useState([])
+ useEffect(() => {
+  fetch(`${API_URL}/projects`)
+    .then((response) => response.json())
+    .then((data) => {
+      setProjects(data)
+    })
+    .catch((error) => {
+      console.error('Error loading projects:', error)
+    })
+}, [])
   const [showForm, setShowForm] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
 
-  const handleCreateProject = (e) => {
-    e.preventDefault()
+  const handleCreateProject = async (e) => {
+  e.preventDefault()
 
-    if (!projectName.trim() || !projectDescription.trim()) {
-      alert('Please enter project name and description.')
-      return
+  if (!projectName.trim() || !projectDescription.trim()) {
+    alert('Please enter project name and description.')
+    return
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: projectName,
+        description: projectDescription,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to create project')
     }
 
-    const newProject = {
-      id: Date.now(),
-      name: projectName,
-      description: projectDescription,
-      progress: 0,
-      status: 'In Progress',
-    }
+    const newProject = await response.json()
 
     setProjects((previousProjects) => [
       ...previousProjects,
@@ -54,7 +52,11 @@ function Projects({ username, onLogout }) {
     setProjectName('')
     setProjectDescription('')
     setShowForm(false)
+  } catch (error) {
+    console.error('Error creating project:', error)
+    alert('Unable to create project. Please try again.')
   }
+}
 
   return (
     <div className="app">
