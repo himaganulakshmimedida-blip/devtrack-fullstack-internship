@@ -8,6 +8,7 @@ import Login from './Login'
 import Logout from './logout'
 import Projects from './projects'
 import Tasks from './Tasks'
+const API_URL = 'https://backend-omega-wheat-ny2fuev01d.vercel.app'
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -29,12 +30,23 @@ function App() {
 
       setCurrentPage(page)
     }
+    
 
     window.addEventListener('hashchange', handleHashChange)
 
     return () => {
       window.removeEventListener('hashchange', handleHashChange)
     }
+  }, [])
+    useEffect(() => {
+    fetch(`${API_URL}/`)
+      .then((response) => response.json())
+      .then((data) => {
+        console.log('Backend connected:', data)
+      })
+      .catch((error) => {
+        console.error('Backend connection failed:', error)
+      })
   }, [])
 
   const handleLogin = (user) => {
