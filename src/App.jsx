@@ -5,8 +5,8 @@ import Navbar from './components/Navbar'
 import ProjectCard from './components/ProjectCard'
 import TaskCard from './components/TaskCard'
 import Login from './Login'
-import Logout from './Logout'
-import Projects from './Projects'
+import Logout from './logout'
+import Projects from './projects'
 import Tasks from './Tasks'
 
 function App() {
