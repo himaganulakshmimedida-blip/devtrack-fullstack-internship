@@ -57,7 +57,31 @@ function Projects({ username, onLogout }) {
     alert('Unable to create project. Please try again.')
   }
 }
+const handleDeleteProject = async (projectId) => {
+  const confirmDelete = window.confirm(
+    'Are you sure you want to delete this project?'
+  )
 
+  if (!confirmDelete) return
+
+  try {
+    const response = await fetch(`${API_URL}/projects/${projectId}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      alert('Failed to delete project')
+      return
+    }
+
+    setProjects((previousProjects) =>
+      previousProjects.filter((project) => project.id !== projectId)
+    )
+  } catch (error) {
+    console.error('Error deleting project:', error)
+    alert('Something went wrong')
+  }
+}
   return (
     <div className="app">
 
@@ -346,6 +370,22 @@ function Projects({ username, onLogout }) {
               <button className="view-project-button">
                 View Project
               </button>
+              <button
+  onClick={() => handleDeleteProject(project.id)}
+  style={{
+    marginTop: '10px',
+    padding: '8px 14px',
+    border: '1px solid #fecaca',
+    borderRadius: '8px',
+    background: '#fff5f5',
+    color: '#4422ce',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  }}
+>
+  🗑 Delete
+</button>
 
             </div>
           ))}

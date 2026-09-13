@@ -78,6 +78,31 @@ function Tasks({ username, onLogout }) {
     alert('Unable to create task. Please try again.')
   }
 }
+const handleDeleteTask = async (taskId) => {
+  const confirmDelete = window.confirm(
+    'Are you sure you want to delete this task?'
+  )
+
+  if (!confirmDelete) return
+
+  try {
+    const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      alert('Failed to delete task')
+      return
+    }
+
+    setTasks((prevTasks) =>
+      prevTasks.filter((task) => task.id !== taskId)
+    )
+  } catch (error) {
+    console.error('Error deleting task:', error)
+    alert('Something went wrong')
+  }
+}
   return (
     <div className="app">
 
@@ -393,32 +418,59 @@ function Tasks({ username, onLogout }) {
 
         {/* TASK LIST */}
 
-        <div className="task-list">
+<div className="task-list">
 
-          {filteredTasks.length > 0 ? (
-            filteredTasks.map((task) => (
-              <TaskCard
-                key={task.id}
-                title={task.title}
-                project={task.project}
-                priority={task.priority}
-                status={task.status}
-              />
-            ))
-          ) : (
-            <div className="empty-state">
-              <h3>No tasks found</h3>
-              <p>
-                Try changing your search or status filter.
-              </p>
-            </div>
-          )}
+  {filteredTasks.length > 0 ? (
+    filteredTasks.map((task) => (
+      <div key={task.id}>
 
-        </div>
+        <TaskCard
+          title={task.title}
+          project={task.project}
+          priority={task.priority}
+          status={task.status}
+        />
 
-      </main>
+        <button
+  onClick={() => handleDeleteTask(task.id)}
+  style={{
+    marginTop: '10px',
+    padding: '8px 14px',
+    border: '1px solid #fecaca',
+    borderRadius: '8px',
+    background: '#fff5f5',
+    color: '#2a5cc7',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.background = '#fee2e2'
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.background = '#fff5f5'
+  }}
+>
+  🗑 Delete
+</button>
 
+      </div>
+    ))
+  ) : (
+    <div className="empty-state">
+      <h3>No tasks found</h3>
+      <p>
+        Try changing your search or status filter.
+      </p>
     </div>
+   )}
+
+</div>
+
+</main>
+
+</div>
   )
 }
 
