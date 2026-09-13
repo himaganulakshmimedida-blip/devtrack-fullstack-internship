@@ -472,16 +472,34 @@ app.delete('/api/users/:id', (req, res) => {
 
 // ==================== START SERVER ====================
 
-connectDB()
-  .then(async () => {
-    await seedProjects()
-    await seedTasks()
-    await seedUsers()
+if (process.env.VERCEL) {
+  module.exports = async (req, res) => {
+    try {
+      await connectDB()
+      await seedProjects()
+      await seedTasks()
+      await seedUsers()
 
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:5000`)
+      app(req, res)
+    } catch (error) {
+      console.error('MongoDB connection failed:', error)
+      res.status(500).json({
+        message: 'Database connection failed',
+      })
+    }
+  }
+} else {
+  connectDB()
+    .then(async () => {
+      await seedProjects()
+      await seedTasks()
+      await seedUsers()
+
+      app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`)
+      })
     })
-  })
-  .catch((error) => {
-    console.error('MongoDB connection failed:', error)
-  })
+    .catch((error) => {
+      console.error('MongoDB connection failed:', error)
+    })
+}
