@@ -3,7 +3,7 @@ import Navbar from './components/Navbar'
 import DueDateBadge from './components/DueDateBadge'
 import ProjectDueDate from './components/ProjectDueDate'
 import { formatDueDate, toDateInputValue } from './utils/dueDate'
-const API_URL = 'http://localhost:5000/api'
+import { API_URL } from './config/api'
 
 function Projects({ username, onLogout }) {
  const [projects, setProjects] = useState([])
