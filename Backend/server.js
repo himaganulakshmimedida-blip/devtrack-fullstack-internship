@@ -7,6 +7,9 @@ const {
   requireAuth,
   sanitizeUser,
   buildAuthResponse,
+  ownerQuery,
+  identityQuery,
+  findOwnedOrDeny,
 } = require('./auth')
 const client = new MongoClient(process.env.MONGODB_URI)
 
@@ -112,8 +115,9 @@ async function seedProjects() {
 
 app.get('/api/projects', requireAuth, async (req, res) => {
   try {
+    res.set('Cache-Control', 'private, no-store')
     const projects = await projectsCollection()
-      .find({ userId: req.userId })
+      .find(ownerQuery(req.user.id))
       .toArray()
     res.json(projects)
   } catch (error) {
@@ -133,18 +137,19 @@ app.get('/api/projects/:id', requireAuth, async (req, res) => {
       })
     }
 
-    const project = await projectsCollection().findOne({
-      id: projectId,
-      userId: req.userId,
-    })
+    const owned = await findOwnedOrDeny(
+      projectsCollection(),
+      projectId,
+      req.user.id
+    )
 
-    if (!project) {
-      return res.status(404).json({
-        message: 'Project not found',
+    if (owned.status) {
+      return res.status(owned.status).json({
+        message: owned.message,
       })
     }
 
-    res.json(project)
+    res.json(owned.document)
   } catch (error) {
     res.status(500).json({
       message: 'Failed to fetch project',
@@ -177,7 +182,7 @@ app.post('/api/projects', requireAuth, async (req, res) => {
       description,
       progress: 0,
       status: 'In Progress',
-      userId: req.userId,
+      userId: Number(req.user.id),
     }
 
     if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
@@ -203,14 +208,15 @@ app.put('/api/projects/:id', requireAuth, async (req, res) => {
   })
 }
 
-    const existingProject = await projectsCollection().findOne({
-      id: projectId,
-      userId: req.userId,
-    })
+    const owned = await findOwnedOrDeny(
+      projectsCollection(),
+      projectId,
+      req.user.id
+    )
 
-    if (!existingProject) {
-      return res.status(404).json({
-        message: 'Project not found',
+    if (owned.status) {
+      return res.status(owned.status).json({
+        message: owned.message,
       })
     }
 
@@ -270,13 +276,13 @@ const updateData = {}
     }
 
     await projectsCollection().updateOne(
-      { id: projectId, userId: req.userId },
+      { id: projectId, ...ownerQuery(req.user.id) },
       { $set: updateData }
     )
 
     const updatedProject = await projectsCollection().findOne({
       id: projectId,
-      userId: req.userId,
+      ...ownerQuery(req.user.id),
     })
 
     res.json(updatedProject)
@@ -291,25 +297,26 @@ app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     const projectId = Number(req.params.id)
 
-    const project = await projectsCollection().findOne({
-      id: projectId,
-      userId: req.userId,
-    })
+    const owned = await findOwnedOrDeny(
+      projectsCollection(),
+      projectId,
+      req.user.id
+    )
 
-    if (!project) {
-      return res.status(404).json({
-        message: 'Project not found',
+    if (owned.status) {
+      return res.status(owned.status).json({
+        message: owned.message,
       })
     }
 
     await projectsCollection().deleteOne({
       id: projectId,
-      userId: req.userId,
+      ...ownerQuery(req.user.id),
     })
 
     res.json({
       message: 'Project deleted successfully',
-      project,
+      project: owned.document,
     })
   } catch (error) {
     res.status(500).json({
@@ -376,8 +383,9 @@ async function seedTasks() {
 // GET all tasks
 app.get('/api/tasks', requireAuth, async (req, res) => {
   try {
+    res.set('Cache-Control', 'private, no-store')
     const tasks = await tasksCollection()
-      .find({ userId: req.userId })
+      .find(ownerQuery(req.user.id))
       .toArray()
     res.json(tasks)
   } catch (error) {
@@ -392,18 +400,19 @@ app.get('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const taskId = Number(req.params.id)
 
-    const task = await tasksCollection().findOne({
-      id: taskId,
-      userId: req.userId,
-    })
+    const owned = await findOwnedOrDeny(
+      tasksCollection(),
+      taskId,
+      req.user.id
+    )
 
-    if (!task) {
-      return res.status(404).json({
-        message: 'Task not found',
+    if (owned.status) {
+      return res.status(owned.status).json({
+        message: owned.message,
       })
     }
 
-    res.json(task)
+    res.json(owned.document)
   } catch (error) {
     res.status(500).json({
       message: 'Failed to fetch task',
@@ -469,7 +478,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
     if (projectId !== undefined && projectId !== null) {
       const ownedProject = await projectsCollection().findOne({
         id: Number(projectId),
-        userId: req.userId,
+        ...ownerQuery(req.user.id),
       })
 
       if (!ownedProject) {
@@ -485,7 +494,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       project: project.trim(),
       priority: priority || 'Medium',
       status: status || 'Todo',
-      userId: req.userId,
+      userId: Number(req.user.id),
       updatedAt: new Date().toISOString(),
     }
 
@@ -526,14 +535,15 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
       })
     }
 
-    const existingTask = await tasksCollection().findOne({
-      id: taskId,
-      userId: req.userId,
-    })
+    const owned = await findOwnedOrDeny(
+      tasksCollection(),
+      taskId,
+      req.user.id
+    )
 
-    if (!existingTask) {
-      return res.status(404).json({
-        message: 'Task not found',
+    if (owned.status) {
+      return res.status(owned.status).json({
+        message: owned.message,
       })
     }
 
@@ -620,7 +630,7 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     if (projectId !== undefined && projectId !== null && projectId !== '') {
       const ownedProject = await projectsCollection().findOne({
         id: Number(projectId),
-        userId: req.userId,
+        ...ownerQuery(req.user.id),
       })
 
       if (!ownedProject) {
@@ -639,13 +649,13 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     }
 
     await tasksCollection().updateOne(
-      { id: taskId, userId: req.userId },
+      { id: taskId, ...ownerQuery(req.user.id) },
       { $set: updateData }
     )
 
     const updatedTask = await tasksCollection().findOne({
       id: taskId,
-      userId: req.userId,
+      ...ownerQuery(req.user.id),
     })
 
     res.status(200).json(updatedTask)
@@ -663,25 +673,26 @@ app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const taskId = Number(req.params.id)
 
-    const task = await tasksCollection().findOne({
-      id: taskId,
-      userId: req.userId,
-    })
+    const owned = await findOwnedOrDeny(
+      tasksCollection(),
+      taskId,
+      req.user.id
+    )
 
-    if (!task) {
-      return res.status(404).json({
-        message: 'Task not found',
+    if (owned.status) {
+      return res.status(owned.status).json({
+        message: owned.message,
       })
     }
 
     await tasksCollection().deleteOne({
       id: taskId,
-      userId: req.userId,
+      ...ownerQuery(req.user.id),
     })
 
     res.json({
       message: 'Task deleted successfully',
-      task,
+      task: owned.document,
     })
   } catch (error) {
     res.status(500).json({
@@ -725,7 +736,7 @@ async function setupDatabaseValidation() {
             bsonType: ['string', 'null']
           },
           userId: {
-            bsonType: ['int', 'double']
+            bsonType: ['int', 'long', 'double', 'string']
           }
         }
       }
@@ -769,7 +780,7 @@ async function setupDatabaseValidation() {
             bsonType: ['string', 'null']
           },
           userId: {
-            bsonType: ['int', 'double']
+            bsonType: ['int', 'long', 'double', 'string']
           }
         }
       }
@@ -808,22 +819,22 @@ async function setupDatabaseValidation() {
 }
 async function updateExistingTaskRelationships() {
   await tasksCollection().updateOne(
-    { id: 1 },
+    { id: 1, userId: { $exists: false } },
     { $set: { projectId: 1, userId: 1 } }
   )
 
   await tasksCollection().updateOne(
-    { id: 2 },
+    { id: 2, userId: { $exists: false } },
     { $set: { projectId: 2, userId: 1 } }
   )
 
   await tasksCollection().updateOne(
-    { id: 3 },
+    { id: 3, userId: { $exists: false } },
     { $set: { projectId: 2, userId: 1 } }
   )
 
   await tasksCollection().updateOne(
-    { id: 4 },
+    { id: 4, userId: { $exists: false } },
     { $set: { projectId: 3, userId: 2 } }
   )
 
@@ -986,9 +997,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
-    const user = await usersCollection().findOne({
-      id: req.userId,
-    })
+    const user = await usersCollection().findOne(identityQuery(req.user.id))
 
     if (!user) {
       return res.status(401).json({
@@ -1007,9 +1016,7 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // GET all users
 app.get('/api/users', requireAuth, async (req, res) => {
   try {
-    const user = await usersCollection().findOne({
-      id: req.userId,
-    })
+    const user = await usersCollection().findOne(identityQuery(req.user.id))
 
     if (!user) {
       return res.status(404).json({
@@ -1030,15 +1037,13 @@ app.get('/api/users/:id', requireAuth, async (req, res) => {
   try {
     const userId = Number(req.params.id)
 
-    if (userId !== req.userId) {
+    if (userId !== Number(req.user.id)) {
       return res.status(403).json({
         message: 'Access denied',
       })
     }
 
-    const user = await usersCollection().findOne({
-      id: userId,
-    })
+    const user = await usersCollection().findOne(identityQuery(userId))
 
     if (!user) {
       return res.status(404).json({

@@ -47,11 +47,12 @@ function verifyAuthToken(token) {
       Buffer.from(payloadSegment, 'base64url').toString('utf8')
     )
 
-    if (!payload.userId || !payload.exp || payload.exp < Date.now()) {
+    const userId = Number(payload.userId)
+    if (!Number.isFinite(userId) || payload.exp < Date.now()) {
       return null
     }
 
-    return payload.userId
+    return userId
   } catch (error) {
     return null
   }
@@ -69,14 +70,43 @@ function requireAuth(req, res, next) {
   const token = authHeader.slice(7)
   const userId = verifyAuthToken(token)
 
-  if (!userId) {
+  if (!Number.isFinite(userId)) {
     return res.status(401).json({
       message: 'Invalid or expired token',
     })
   }
 
   req.userId = userId
+  req.user = { id: userId }
   next()
+}
+
+function ownerQuery(userId) {
+  const numericId = Number(userId)
+  return {
+    userId: { $in: [numericId, String(numericId)] },
+  }
+}
+
+function identityQuery(userId) {
+  const numericId = Number(userId)
+  return {
+    id: { $in: [numericId, String(numericId)] },
+  }
+}
+
+async function findOwnedOrDeny(collection, numericId, userId) {
+  const document = await collection.findOne({ id: numericId })
+
+  if (!document) {
+    return { status: 404, message: 'Resource not found' }
+  }
+
+  if (Number(document.userId) !== Number(userId)) {
+    return { status: 403, message: 'You do not have access to this resource' }
+  }
+
+  return { document }
 }
 
 function sanitizeUser(user) {
@@ -97,7 +127,7 @@ function buildAuthResponse(user) {
 
   return {
     ...safeUser,
-    token: createAuthToken(user.id),
+    token: createAuthToken(Number(user.id)),
   }
 }
 
@@ -107,4 +137,7 @@ module.exports = {
   requireAuth,
   sanitizeUser,
   buildAuthResponse,
+  ownerQuery,
+  identityQuery,
+  findOwnedOrDeny,
 }
