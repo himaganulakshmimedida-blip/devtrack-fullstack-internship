@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
-
-const API_URL = 'http://localhost:5000'
+import { API_URL } from './config/api'
 
 function AIAssistant({ username, onLogout }) {
   const [projects, setProjects] = useState([])
@@ -16,7 +15,7 @@ function AIAssistant({ username, onLogout }) {
   const [addSuccess, setAddSuccess] = useState('')
 
   useEffect(() => {
-    fetch(`${API_URL}/api/projects`)
+    fetch(`${API_URL}/projects`)
       .then((response) => response.json())
       .then((data) => setProjects(data))
       .catch((error) => console.error('Failed to load projects:', error))
@@ -36,7 +35,7 @@ function AIAssistant({ username, onLogout }) {
       setSelectedTaskIndexes([])
       setAddSuccess('')
 
-      const response = await fetch(`${API_URL}/api/ai`, {
+      const response = await fetch(`${API_URL}/ai`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,7 +98,7 @@ function AIAssistant({ username, onLogout }) {
       const createdTasks = []
 
       for (const generatedTask of tasksToAdd) {
-        const response = await fetch(`${API_URL}/api/tasks`, {
+        const response = await fetch(`${API_URL}/tasks`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

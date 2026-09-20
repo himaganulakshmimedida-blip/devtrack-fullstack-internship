@@ -22,9 +22,7 @@ import AIAssistant from './AIAssistant'
 
 import { collectUpcomingDeadlines } from './utils/dueDate'
 
-
-
-const API_URL = 'http://localhost:5000'
+import { API_URL, API_ROOT_URL } from './config/api'
 
 
 
@@ -116,9 +114,9 @@ const [tasks, setTasks] = useState([])
 
   Promise.all([
 
-    fetch(`${API_URL}/api/projects`).then((response) => response.json()),
+    fetch(`${API_URL}/projects`).then((response) => response.json()),
 
-    fetch(`${API_URL}/api/tasks`).then((response) => response.json())
+    fetch(`${API_URL}/tasks`).then((response) => response.json())
 
   ])
 
@@ -146,7 +144,7 @@ const [tasks, setTasks] = useState([])
 
     useEffect(() => {
 
-    fetch(`${API_URL}/`)
+    fetch(`${API_ROOT_URL}/`)
 
       .then((response) => response.json())
 
@@ -208,7 +206,7 @@ const [tasks, setTasks] = useState([])
 
   try {
 
-    const response = await fetch(`${API_URL}/api/tasks/${taskId}`, {
+    const response = await fetch(`${API_URL}/tasks/${taskId}`, {
 
       method: 'PUT',
 

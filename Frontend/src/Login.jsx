@@ -4,8 +4,7 @@ import {
   getPasswordValidation,
   isPasswordValid,
 } from './utils/passwordValidation'
-
-const API_URL = 'http://localhost:5000'
+import { API_URL } from './config/api'
 
 function Login({ onLogin }) {
   const [mode, setMode] = useState('login')
@@ -40,7 +39,7 @@ function Login({ onLogin }) {
       setLoading(true)
 
       const endpoint =
-        mode === 'login' ? '/api/auth/login' : '/api/auth/signup'
+        mode === 'login' ? '/auth/login' : '/auth/signup'
 
       const body =
         mode === 'login'

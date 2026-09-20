@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
 import TaskCard from './components/TaskCard'
 import { toDateInputValue } from './utils/dueDate'
-const API_URL = 'http://localhost:5000/api'
+import { API_URL } from './config/api'
 function Tasks({ username, onLogout }) {
   const [tasks, setTasks] = useState([])
   const [projects, setProjects] = useState([])
