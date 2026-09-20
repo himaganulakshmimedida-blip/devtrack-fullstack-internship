@@ -126,6 +126,11 @@ app.post('/api/projects', async (req, res) => {
 app.put('/api/projects/:id', async (req, res) => {
   try {
     const projectId = Number(req.params.id)
+    if (isNaN(projectId)) {
+  return res.status(400).json({
+    message: 'Invalid project ID',
+  })
+}
 
     const { name, description, progress, status } = req.body
 
