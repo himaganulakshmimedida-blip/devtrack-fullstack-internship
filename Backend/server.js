@@ -3,6 +3,11 @@ const crypto = require('crypto')
 const { MongoClient } = require('mongodb')
 const { generateStructuredTasks } = require('./ai')
 const { validateSignupPassword } = require('./passwordValidation')
+const {
+  requireAuth,
+  sanitizeUser,
+  buildAuthResponse,
+} = require('./auth')
 const client = new MongoClient(process.env.MONGODB_URI)
 
 let db
@@ -19,7 +24,13 @@ const app = express()
 
 const PORT = 5000
 
-app.use(cors())
+app.use(
+  cors({
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+)
 app.use(express.json())
 
 function hashPassword(password) {
@@ -32,7 +43,7 @@ app.get('/', (req, res) => {
 
 // ==================== AI API ====================
 
-app.post('/api/ai', async (req, res) => {
+app.post('/api/ai', requireAuth, async (req, res) => {
   try {
     const { prompt, projectContext } = req.body
 
@@ -99,9 +110,11 @@ async function seedProjects() {
   }
 }
 
-app.get('/api/projects', async (req, res) => {
+app.get('/api/projects', requireAuth, async (req, res) => {
   try {
-    const projects = await projectsCollection().find({}).toArray()
+    const projects = await projectsCollection()
+      .find({ userId: req.userId })
+      .toArray()
     res.json(projects)
   } catch (error) {
     res.status(500).json({
@@ -110,7 +123,7 @@ app.get('/api/projects', async (req, res) => {
   }
 })
 
-app.get('/api/projects/:id', async (req, res) => {
+app.get('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     const projectId = Number(req.params.id)
 
@@ -122,6 +135,7 @@ app.get('/api/projects/:id', async (req, res) => {
 
     const project = await projectsCollection().findOne({
       id: projectId,
+      userId: req.userId,
     })
 
     if (!project) {
@@ -138,7 +152,7 @@ app.get('/api/projects/:id', async (req, res) => {
   }
 })
 
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', requireAuth, async (req, res) => {
   try {
     const { name, description, dueDate } = req.body
 
@@ -163,6 +177,7 @@ app.post('/api/projects', async (req, res) => {
       description,
       progress: 0,
       status: 'In Progress',
+      userId: req.userId,
     }
 
     if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
@@ -179,7 +194,7 @@ app.post('/api/projects', async (req, res) => {
   }
 })
 
-app.put('/api/projects/:id', async (req, res) => {
+app.put('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     const projectId = Number(req.params.id)
     if (isNaN(projectId)) {
@@ -187,6 +202,17 @@ app.put('/api/projects/:id', async (req, res) => {
     message: 'Invalid project ID',
   })
 }
+
+    const existingProject = await projectsCollection().findOne({
+      id: projectId,
+      userId: req.userId,
+    })
+
+    if (!existingProject) {
+      return res.status(404).json({
+        message: 'Project not found',
+      })
+    }
 
     const { name, description, progress, status, dueDate } = req.body
 
@@ -243,19 +269,14 @@ const updateData = {}
           : new Date(dueDate).toISOString()
     }
 
-    const result = await projectsCollection().updateOne(
-      { id: projectId },
+    await projectsCollection().updateOne(
+      { id: projectId, userId: req.userId },
       { $set: updateData }
     )
 
-    if (result.matchedCount === 0) {
-      return res.status(404).json({
-        message: 'Project not found',
-      })
-    }
-
     const updatedProject = await projectsCollection().findOne({
       id: projectId,
+      userId: req.userId,
     })
 
     res.json(updatedProject)
@@ -266,12 +287,13 @@ const updateData = {}
   }
 })
 
-app.delete('/api/projects/:id', async (req, res) => {
+app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     const projectId = Number(req.params.id)
 
     const project = await projectsCollection().findOne({
       id: projectId,
+      userId: req.userId,
     })
 
     if (!project) {
@@ -282,6 +304,7 @@ app.delete('/api/projects/:id', async (req, res) => {
 
     await projectsCollection().deleteOne({
       id: projectId,
+      userId: req.userId,
     })
 
     res.json({
@@ -351,9 +374,11 @@ async function seedTasks() {
 }
 
 // GET all tasks
-app.get('/api/tasks', async (req, res) => {
+app.get('/api/tasks', requireAuth, async (req, res) => {
   try {
-    const tasks = await tasksCollection().find({}).toArray()
+    const tasks = await tasksCollection()
+      .find({ userId: req.userId })
+      .toArray()
     res.json(tasks)
   } catch (error) {
     res.status(500).json({
@@ -363,12 +388,13 @@ app.get('/api/tasks', async (req, res) => {
 })
 
 // GET one task
-app.get('/api/tasks/:id', async (req, res) => {
+app.get('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const taskId = Number(req.params.id)
 
     const task = await tasksCollection().findOne({
       id: taskId,
+      userId: req.userId,
     })
 
     if (!task) {
@@ -387,7 +413,7 @@ app.get('/api/tasks/:id', async (req, res) => {
 
 // POST create a task
 
-app.post('/api/tasks', async (req, res) => {
+app.post('/api/tasks', requireAuth, async (req, res) => {
   try {
     const {
       title,
@@ -440,12 +466,26 @@ app.post('/api/tasks', async (req, res) => {
       }
     }
 
+    if (projectId !== undefined && projectId !== null) {
+      const ownedProject = await projectsCollection().findOne({
+        id: Number(projectId),
+        userId: req.userId,
+      })
+
+      if (!ownedProject) {
+        return res.status(400).json({
+          message: 'Invalid project reference',
+        })
+      }
+    }
+
     const newTask = {
       id: Date.now(),
       title: title.trim(),
       project: project.trim(),
       priority: priority || 'Medium',
       status: status || 'Todo',
+      userId: req.userId,
       updatedAt: new Date().toISOString(),
     }
 
@@ -476,13 +516,24 @@ app.post('/api/tasks', async (req, res) => {
 })
 
 // PUT update a task
-app.put('/api/tasks/:id', async (req, res) => {
+app.put('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const taskId = Number(req.params.id)
 
     if (isNaN(taskId)) {
       return res.status(400).json({
         message: 'Invalid task ID',
+      })
+    }
+
+    const existingTask = await tasksCollection().findOne({
+      id: taskId,
+      userId: req.userId,
+    })
+
+    if (!existingTask) {
+      return res.status(404).json({
+        message: 'Task not found',
       })
     }
 
@@ -566,6 +617,19 @@ app.put('/api/tasks/:id', async (req, res) => {
         projectId === null || projectId === '' ? null : Number(projectId)
     }
 
+    if (projectId !== undefined && projectId !== null && projectId !== '') {
+      const ownedProject = await projectsCollection().findOne({
+        id: Number(projectId),
+        userId: req.userId,
+      })
+
+      if (!ownedProject) {
+        return res.status(400).json({
+          message: 'Invalid project reference',
+        })
+      }
+    }
+
     updateData.updatedAt = new Date().toISOString()
 
     if (Object.keys(updateData).length === 0) {
@@ -574,19 +638,14 @@ app.put('/api/tasks/:id', async (req, res) => {
       })
     }
 
-    const result = await tasksCollection().updateOne(
-      { id: taskId },
+    await tasksCollection().updateOne(
+      { id: taskId, userId: req.userId },
       { $set: updateData }
     )
 
-    if (result.matchedCount === 0) {
-      return res.status(404).json({
-        message: 'Task not found',
-      })
-    }
-
     const updatedTask = await tasksCollection().findOne({
       id: taskId,
+      userId: req.userId,
     })
 
     res.status(200).json(updatedTask)
@@ -600,12 +659,13 @@ app.put('/api/tasks/:id', async (req, res) => {
 })
 
 // DELETE a task
-app.delete('/api/tasks/:id', async (req, res) => {
+app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
   try {
     const taskId = Number(req.params.id)
 
     const task = await tasksCollection().findOne({
       id: taskId,
+      userId: req.userId,
     })
 
     if (!task) {
@@ -616,6 +676,7 @@ app.delete('/api/tasks/:id', async (req, res) => {
 
     await tasksCollection().deleteOne({
       id: taskId,
+      userId: req.userId,
     })
 
     res.json({
@@ -662,6 +723,9 @@ async function setupDatabaseValidation() {
           },
           dueDate: {
             bsonType: ['string', 'null']
+          },
+          userId: {
+            bsonType: ['int', 'double']
           }
         }
       }
@@ -703,6 +767,9 @@ async function setupDatabaseValidation() {
           },
           updatedAt: {
             bsonType: ['string', 'null']
+          },
+          userId: {
+            bsonType: ['int', 'double']
           }
         }
       }
@@ -761,6 +828,24 @@ async function updateExistingTaskRelationships() {
   )
 
   console.log('Existing task relationships updated')
+}
+
+async function migrateOrphanedRecords() {
+  const projectResult = await projectsCollection().updateMany(
+    { userId: { $exists: false } },
+    { $set: { userId: 1 } }
+  )
+
+  const taskResult = await tasksCollection().updateMany(
+    { userId: { $exists: false } },
+    { $set: { userId: 1 } }
+  )
+
+  if (projectResult.modifiedCount > 0 || taskResult.modifiedCount > 0) {
+    console.log(
+      `Migrated orphaned records: ${projectResult.modifiedCount} projects, ${taskResult.modifiedCount} tasks assigned to legacy user 1`
+    )
+  }
 }
 
 async function seedUsers() {
@@ -859,12 +944,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
     await usersCollection().insertOne(newUser)
 
-    res.status(201).json({
-      id: newUser.id,
-      name: newUser.name,
-      email: newUser.email,
-      role: newUser.role,
-    })
+    res.status(201).json(buildAuthResponse(newUser))
   } catch (error) {
     console.error('Signup Error:', error)
 
@@ -894,12 +974,7 @@ app.post('/api/auth/login', async (req, res) => {
       })
     }
 
-    res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    })
+    res.json(buildAuthResponse(user))
   } catch (error) {
     console.error('Login Error:', error)
 
@@ -909,11 +984,40 @@ app.post('/api/auth/login', async (req, res) => {
   }
 })
 
-// GET all users
-app.get('/api/users', async (req, res) => {
+app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
-    const users = await usersCollection().find({}).toArray()
-    res.json(users)
+    const user = await usersCollection().findOne({
+      id: req.userId,
+    })
+
+    if (!user) {
+      return res.status(401).json({
+        message: 'User not found',
+      })
+    }
+
+    res.json(sanitizeUser(user))
+  } catch (error) {
+    res.status(500).json({
+      message: 'Failed to fetch current user',
+    })
+  }
+})
+
+// GET all users
+app.get('/api/users', requireAuth, async (req, res) => {
+  try {
+    const user = await usersCollection().findOne({
+      id: req.userId,
+    })
+
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+      })
+    }
+
+    res.json([sanitizeUser(user)])
   } catch (error) {
     res.status(500).json({
       message: 'Failed to fetch users',
@@ -922,9 +1026,15 @@ app.get('/api/users', async (req, res) => {
 })
 
 // GET one user
-app.get('/api/users/:id', async (req, res) => {
+app.get('/api/users/:id', requireAuth, async (req, res) => {
   try {
     const userId = Number(req.params.id)
+
+    if (userId !== req.userId) {
+      return res.status(403).json({
+        message: 'Access denied',
+      })
+    }
 
     const user = await usersCollection().findOne({
       id: userId,
@@ -936,7 +1046,7 @@ app.get('/api/users/:id', async (req, res) => {
       })
     }
 
-    res.json(user)
+    res.json(sanitizeUser(user))
   } catch (error) {
     res.status(500).json({
       message: 'Failed to fetch user',
@@ -1120,23 +1230,44 @@ app.use((err, req, res, next) => {
 })
 // ==================== START SERVER ====================
 
+function applyCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET,POST,PUT,PATCH,DELETE,OPTIONS'
+  )
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization'
+  )
+}
+
+let vercelReady = null
+
 if (process.env.VERCEL) {
   module.exports = async (req, res) => {
+    applyCorsHeaders(res)
+
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204
+      return res.end()
+    }
+
     try {
-      await connectDB()
-await setupDatabaseValidation()
-await seedProjects()
-await seedTasks()
-await updateExistingTaskRelationships()
-await seedUsers()
-await ensureSeedUserPasswords()
-      app(req, res)
+      if (!vercelReady) {
+        vercelReady = connectDB()
+      }
+      await vercelReady
+      return app(req, res)
     } catch (error) {
       console.error('Server error:', error)
+      vercelReady = null
 
-      res.status(500).json({
-        message: 'Server error',
-      })
+      if (!res.headersSent) {
+        res.statusCode = 500
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ message: 'Server error' }))
+      }
     }
   }
 } else {
@@ -1148,6 +1279,7 @@ await ensureSeedUserPasswords()
     await updateExistingTaskRelationships()
     await seedUsers()
 await ensureSeedUserPasswords()
+    await migrateOrphanedRecords()
 
       app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`)

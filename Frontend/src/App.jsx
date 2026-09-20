@@ -22,23 +22,27 @@ import AIAssistant from './AIAssistant'
 
 import { collectUpcomingDeadlines } from './utils/dueDate'
 
-import { API_URL, API_ROOT_URL } from './config/api'
+import { API_ROOT_URL } from './config/api'
+import { apiFetch } from './utils/apiClient'
+import {
+  clearAuthSession,
+  hasAuthSession,
+  setAuthSession,
+} from './utils/auth'
 
 
 
 function App() {
 
-  const [isLoggedIn, setIsLoggedIn] = useState(
-
-  localStorage.getItem('isLoggedIn') === 'true'
-
-)
+  const [isLoggedIn, setIsLoggedIn] = useState(hasAuthSession())
 
   const [username, setUsername] = useState(
 
   localStorage.getItem('username') || ''
 
 )
+
+  const [authChecking, setAuthChecking] = useState(hasAuthSession())
 
 
 
@@ -107,6 +111,50 @@ const [tasks, setTasks] = useState([])
   }, [isLoggedIn])
 
   useEffect(() => {
+    const handleUnauthorized = () => {
+      setUsername('')
+      setIsLoggedIn(false)
+      setProjects([])
+      setTasks([])
+    }
+
+    window.addEventListener('devtrack-unauthorized', handleUnauthorized)
+
+    return () => {
+      window.removeEventListener('devtrack-unauthorized', handleUnauthorized)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hasAuthSession()) {
+      setAuthChecking(false)
+      return
+    }
+
+    setAuthChecking(true)
+
+    apiFetch('/auth/me')
+      .then((user) => {
+        setUsername(user.name)
+        setIsLoggedIn(true)
+      })
+      .catch(() => {
+        clearAuthSession()
+        setUsername('')
+        setIsLoggedIn(false)
+      })
+      .finally(() => {
+        setAuthChecking(false)
+      })
+  }, [])
+
+  useEffect(() => {
+
+  if (!isLoggedIn) {
+    setProjects([])
+    setTasks([])
+    return
+  }
 
   setDataLoading(true)
 
@@ -114,9 +162,9 @@ const [tasks, setTasks] = useState([])
 
   Promise.all([
 
-    fetch(`${API_URL}/projects`).then((response) => response.json()),
+    apiFetch('/projects'),
 
-    fetch(`${API_URL}/tasks`).then((response) => response.json())
+    apiFetch('/tasks'),
 
   ])
 
@@ -140,7 +188,7 @@ const [tasks, setTasks] = useState([])
 
     })
 
-}, [])
+}, [isLoggedIn])
 
     useEffect(() => {
 
@@ -166,17 +214,11 @@ const [tasks, setTasks] = useState([])
 
   const handleLogin = (user) => {
 
+  setAuthSession(user, user.token)
+
   setUsername(user.name)
 
   setIsLoggedIn(true)
-
-  localStorage.setItem('isLoggedIn', 'true')
-
-  localStorage.setItem('username', user.name)
-
-  localStorage.setItem('userId', String(user.id))
-
-  localStorage.setItem('userEmail', user.email || '')
 
   window.location.hash = 'dashboard'
 
@@ -184,17 +226,15 @@ const [tasks, setTasks] = useState([])
 
   const handleLogout = () => {
 
+  clearAuthSession()
+
   setUsername('')
 
   setIsLoggedIn(false)
 
-  localStorage.removeItem('isLoggedIn')
+  setProjects([])
 
-  localStorage.removeItem('username')
-
-  localStorage.removeItem('userId')
-
-  localStorage.removeItem('userEmail')
+  setTasks([])
 
   window.location.hash = ''
 
@@ -206,15 +246,9 @@ const [tasks, setTasks] = useState([])
 
   try {
 
-    const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+    const data = await apiFetch(`/tasks/${taskId}`, {
 
       method: 'PUT',
-
-      headers: {
-
-        'Content-Type': 'application/json',
-
-      },
 
       body: JSON.stringify({
 
@@ -223,18 +257,6 @@ const [tasks, setTasks] = useState([])
       }),
 
     })
-
-
-
-    const data = await response.json()
-
-
-
-    if (!response.ok) {
-
-      throw new Error(data.message || 'Failed to update task')
-
-    }
 
 
 
@@ -305,6 +327,16 @@ const [tasks, setTasks] = useState([])
   const upcomingDeadlines = collectUpcomingDeadlines(projects, tasks, 6)
 
 
+
+  if (authChecking) {
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <p>Checking your session...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!isLoggedIn) {
 

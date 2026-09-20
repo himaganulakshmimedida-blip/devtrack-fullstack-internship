@@ -4,7 +4,7 @@ import {
   getPasswordValidation,
   isPasswordValid,
 } from './utils/passwordValidation'
-import { API_URL } from './config/api'
+import { apiFetch } from './utils/apiClient'
 
 function Login({ onLogin }) {
   const [mode, setMode] = useState('login')
@@ -46,23 +46,31 @@ function Login({ onLogin }) {
           ? { email, password }
           : { name, email, password }
 
-      const response = await fetch(`${API_URL}${endpoint}`, {
+      const data = await apiFetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(body),
+        skipUnauthorizedHandler: true,
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Authentication failed')
-      }
 
       onLogin(data)
     } catch (submitError) {
-      setError(submitError.message || 'Unable to sign in. Please try again.')
+      const rawMessage = submitError.message || ''
+      const isNetworkError =
+        rawMessage === 'Failed to fetch' ||
+        rawMessage.includes('NetworkError') ||
+        rawMessage.includes('Unable to reach the server') ||
+        rawMessage.includes('Backend blocked')
+
+      setError(
+        isNetworkError
+          ? rawMessage === 'Failed to fetch'
+            ? 'Unable to reach the server. Disable Vercel Deployment Protection on the backend, confirm VITE_API_URL, then redeploy.'
+            : rawMessage
+          : rawMessage ||
+            (mode === 'login'
+              ? 'Unable to sign in. Please try again.'
+              : 'Unable to create account. Please try again.')
+      )
     } finally {
       setLoading(false)
     }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
 import TaskCard from './components/TaskCard'
 import { toDateInputValue } from './utils/dueDate'
-import { API_URL } from './config/api'
+import { apiFetch } from './utils/apiClient'
 function Tasks({ username, onLogout }) {
   const [tasks, setTasks] = useState([])
   const [projects, setProjects] = useState([])
@@ -10,15 +10,11 @@ function Tasks({ username, onLogout }) {
   const [editingTask, setEditingTask] = useState(null)
   useEffect(() => {
   Promise.all([
-    fetch(`${API_URL}/tasks`),
-    fetch(`${API_URL}/projects`),
-    fetch(`${API_URL}/users`),
+    apiFetch('/tasks'),
+    apiFetch('/projects'),
+    apiFetch('/users'),
   ])
-    .then(async ([tasksResponse, projectsResponse, usersResponse]) => {
-      const tasksData = await tasksResponse.json()
-      const projectsData = await projectsResponse.json()
-      const usersData = await usersResponse.json()
-
+    .then(([tasksData, projectsData, usersData]) => {
       setTasks(tasksData)
       setProjects(projectsData)
       setUsers(usersData)
@@ -92,11 +88,8 @@ function Tasks({ username, onLogout }) {
       (user) => String(user.id) === String(taskAssigneeUserId)
     )
 
-    const response = await fetch(`${API_URL}/tasks`, {
+    const newTask = await apiFetch('/tasks', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         title: taskTitle,
         project: taskProject,
@@ -108,12 +101,6 @@ function Tasks({ username, onLogout }) {
         dueDate: taskDueDate || null,
       }),
     })
-
-    if (!response.ok) {
-      throw new Error('Failed to create task')
-    }
-
-    const newTask = await response.json()
 
     setTasks((previousTasks) => [
       ...previousTasks,
@@ -128,21 +115,12 @@ function Tasks({ username, onLogout }) {
 }
 const handleStatusChange = async (taskId, newStatus) => {
   try {
-    const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+    const updatedTask = await apiFetch(`/tasks/${taskId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         status: newStatus,
       }),
     })
-
-    if (!response.ok) {
-      throw new Error('Failed to update task')
-    }
-
-    const updatedTask = await response.json()
 
     setTasks((previousTasks) =>
       previousTasks.map((task) =>
@@ -162,14 +140,9 @@ const handleDeleteTask = async (taskId) => {
   if (!confirmDelete) return
 
   try {
-    const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+    await apiFetch(`/tasks/${taskId}`, {
       method: 'DELETE',
     })
-
-    if (!response.ok) {
-      alert('Failed to delete task')
-      return
-    }
 
     setTasks((prevTasks) =>
       prevTasks.filter((task) => task.id !== taskId)
@@ -207,11 +180,8 @@ const handleUpdateTask = async (e) => {
       (user) => String(user.id) === String(taskAssigneeUserId)
     )
 
-    const response = await fetch(`${API_URL}/tasks/${editingTask.id}`, {
+    const data = await apiFetch(`/tasks/${editingTask.id}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         title: taskTitle,
         project: taskProject,
@@ -223,12 +193,6 @@ const handleUpdateTask = async (e) => {
         dueDate: taskDueDate || null,
       }),
     })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to update task')
-    }
 
     setTasks((previousTasks) =>
       previousTasks.map((task) =>

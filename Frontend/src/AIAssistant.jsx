@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
-import { API_URL } from './config/api'
+import { apiFetch } from './utils/apiClient'
 
 function AIAssistant({ username, onLogout }) {
   const [projects, setProjects] = useState([])
@@ -15,8 +15,7 @@ function AIAssistant({ username, onLogout }) {
   const [addSuccess, setAddSuccess] = useState('')
 
   useEffect(() => {
-    fetch(`${API_URL}/projects`)
-      .then((response) => response.json())
+    apiFetch('/projects')
       .then((data) => setProjects(data))
       .catch((error) => console.error('Failed to load projects:', error))
   }, [])
@@ -35,22 +34,13 @@ function AIAssistant({ username, onLogout }) {
       setSelectedTaskIndexes([])
       setAddSuccess('')
 
-      const response = await fetch(`${API_URL}/ai`, {
+      const data = await apiFetch('/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           prompt: aiPrompt,
           projectContext: aiProjectContext,
         }),
       })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || 'AI request failed')
-      }
 
       setAiResponse(data.answer || '')
       const tasks = Array.isArray(data.tasks) ? data.tasks : []
@@ -98,11 +88,8 @@ function AIAssistant({ username, onLogout }) {
       const createdTasks = []
 
       for (const generatedTask of tasksToAdd) {
-        const response = await fetch(`${API_URL}/tasks`, {
+        const data = await apiFetch('/tasks', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             title: generatedTask.title,
             project: generatedTask.project || aiProjectContext || 'General',
@@ -110,12 +97,6 @@ function AIAssistant({ username, onLogout }) {
             status: generatedTask.status || 'Todo',
           }),
         })
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.message || 'Failed to add task')
-        }
 
         createdTasks.push(data)
       }

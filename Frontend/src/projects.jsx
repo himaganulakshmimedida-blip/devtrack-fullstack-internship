@@ -3,7 +3,7 @@ import Navbar from './components/Navbar'
 import DueDateBadge from './components/DueDateBadge'
 import ProjectDueDate from './components/ProjectDueDate'
 import { formatDueDate, toDateInputValue } from './utils/dueDate'
-import { API_URL } from './config/api'
+import { apiFetch } from './utils/apiClient'
 
 function Projects({ username, onLogout }) {
  const [projects, setProjects] = useState([])
@@ -17,8 +17,7 @@ function Projects({ username, onLogout }) {
  const [editStatus, setEditStatus] = useState('In Progress')
  const [editDueDate, setEditDueDate] = useState('')
  useEffect(() => {
-  fetch(`${API_URL}/projects`)
-    .then((response) => response.json())
+  apiFetch('/projects')
     .then((data) => {
       setProjects(data)
     })
@@ -40,23 +39,14 @@ function Projects({ username, onLogout }) {
   }
 
   try {
-    const response = await fetch(`${API_URL}/projects`, {
+    const newProject = await apiFetch('/projects', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         name: projectName,
         description: projectDescription,
         dueDate: projectDueDate || null,
       }),
     })
-
-    if (!response.ok) {
-      throw new Error('Failed to create project')
-    }
-
-    const newProject = await response.json()
 
     setProjects((previousProjects) => [
       ...previousProjects,
@@ -80,14 +70,9 @@ const handleDeleteProject = async (projectId) => {
   if (!confirmDelete) return
 
   try {
-    const response = await fetch(`${API_URL}/projects/${projectId}`, {
+    await apiFetch(`/projects/${projectId}`, {
       method: 'DELETE',
     })
-
-    if (!response.ok) {
-      alert('Failed to delete project')
-      return
-    }
 
     setProjects((previousProjects) =>
       previousProjects.filter((project) => project.id !== projectId)
@@ -102,17 +87,10 @@ const openProjectDetails = async (projectId) => {
   try {
     setDetailsLoading(true)
 
-    const [projectResponse, tasksResponse] = await Promise.all([
-      fetch(`${API_URL}/projects/${projectId}`),
-      fetch(`${API_URL}/tasks`),
+    const [projectData, tasksData] = await Promise.all([
+      apiFetch(`/projects/${projectId}`),
+      apiFetch('/tasks'),
     ])
-
-    const projectData = await projectResponse.json()
-    const tasksData = await tasksResponse.json()
-
-    if (!projectResponse.ok) {
-      throw new Error(projectData.message || 'Failed to load project')
-    }
 
     const relatedTasks = tasksData.filter(
       (task) =>
@@ -148,28 +126,16 @@ const handleUpdateProject = async (e) => {
   }
 
   try {
-    const response = await fetch(
-      `${API_URL}/projects/${editingProject.id}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: editName,
-          description: editDescription,
-          progress: Number(editProgress),
-          status: editStatus,
-          dueDate: editDueDate || null,
-        }),
-      }
-    )
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.message || 'Failed to update project')
-    }
+    const data = await apiFetch(`/projects/${editingProject.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: editName,
+        description: editDescription,
+        progress: Number(editProgress),
+        status: editStatus,
+        dueDate: editDueDate || null,
+      }),
+    })
 
     setProjects((previousProjects) =>
       previousProjects.map((project) =>
