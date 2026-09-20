@@ -1,15 +1,5 @@
-import API_URL, { PRODUCTION_API_URL } from '../config/api'
+import API_URL from '../config/api'
 import { clearAuthSession, getAuthToken } from './auth'
-
-function resolveApiUrl() {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname
-    if (host !== 'localhost' && host !== '127.0.0.1') {
-      return PRODUCTION_API_URL
-    }
-  }
-  return API_URL
-}
 
 export async function apiFetch(path, options = {}) {
   const { skipUnauthorizedHandler = false, ...fetchOptions } = options
@@ -27,33 +17,23 @@ export async function apiFetch(path, options = {}) {
   let response
 
   try {
-    response = await fetch(`${resolveApiUrl()}${path}`, {
+    response = await fetch(`${API_URL}${path}`, {
       ...fetchOptions,
       headers,
     })
   } catch (error) {
     throw new Error(
-      'Unable to reach the server. If this is the live site, disable Vercel Deployment Protection on the backend project, then redeploy both apps.'
+      'Unable to reach the server. Please check your connection and try again.'
     )
   }
 
   let data = null
   const contentType = response.headers.get('content-type')
 
-  if (response.status === 401 || response.status === 403) {
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error(
-        'Backend blocked the request (403). Disable Deployment Protection for the backend Vercel project (Settings → Deployment Protection → Disabled / Standard Protection only for preview if needed), then retry Signup.'
-      )
-    }
-  }
-
   if (contentType && contentType.includes('application/json')) {
     data = await response.json()
   } else if (!response.ok) {
-    throw new Error(
-      'Backend unavailable. Confirm the API is public and returning JSON, not a Vercel login page.'
-    )
+    throw new Error('Backend unavailable. Please try again later.')
   }
 
   if (response.status === 401 && !skipUnauthorizedHandler) {
