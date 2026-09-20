@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
 import TaskCard from './components/TaskCard'
-const API_URL = 'https://backend-omega-wheat-ny2fuey01d.vercel.app/api'
-
+const API_URL = 'http://localhost:5000/api'
 function Tasks({ username, onLogout }) {
   const [tasks, setTasks] = useState([])
   useEffect(() => {
@@ -78,6 +77,34 @@ function Tasks({ username, onLogout }) {
     alert('Unable to create task. Please try again.')
   }
 }
+const handleStatusChange = async (taskId, newStatus) => {
+  try {
+    const response = await fetch(`${API_URL}/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status: newStatus,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to update task')
+    }
+
+    const updatedTask = await response.json()
+
+    setTasks((previousTasks) =>
+      previousTasks.map((task) =>
+        task.id === taskId ? updatedTask : task
+      )
+    )
+  } catch (error) {
+    console.error('Error updating task:', error)
+    alert('Failed to update task')
+  }
+}
 const handleDeleteTask = async (taskId) => {
   const confirmDelete = window.confirm(
     'Are you sure you want to delete this task?'
@@ -103,6 +130,7 @@ const handleDeleteTask = async (taskId) => {
     alert('Something went wrong')
   }
 }
+
   return (
     <div className="app">
 
@@ -424,12 +452,17 @@ const handleDeleteTask = async (taskId) => {
     filteredTasks.map((task) => (
       <div key={task.id}>
 
-        <TaskCard
-          title={task.title}
-          project={task.project}
-          priority={task.priority}
-          status={task.status}
-        />
+     <TaskCard
+  title={task.title}
+  project={task.project}
+  priority={task.priority}
+  status={task.status}
+  onStatusChange={(newStatus) =>
+    handleStatusChange(task.id, newStatus)
+  }
+/>
+
+ 
 
         <button
   onClick={() => handleDeleteTask(task.id)}

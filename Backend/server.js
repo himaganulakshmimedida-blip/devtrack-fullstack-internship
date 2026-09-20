@@ -1,5 +1,6 @@
-require('dotenv').config()
+require('dotenv').config({ path: './.env' })
 const { MongoClient } = require('mongodb')
+const { generateAI } = require('./ai')
 const client = new MongoClient(process.env.MONGODB_URI)
 
 let db
@@ -18,6 +19,31 @@ const PORT = 5000
 
 app.use(cors())
 app.use(express.json())
+// ==================== AI API ====================
+
+app.post('/api/ai', async (req, res) => {
+  try {
+    const { prompt } = req.body
+
+    if (!prompt) {
+      return res.status(400).json({
+        message: 'Prompt is required',
+      })
+    }
+
+    const answer = await generateAI(prompt)
+
+    res.json({
+      answer,
+    })
+  } catch (error) {
+    console.error('AI Error:', error)
+
+    res.status(500).json({
+      message: 'AI request failed',
+    })
+  }
+})
 
 // ==================== PROJECT DATA ====================
 
@@ -29,26 +55,29 @@ async function seedProjects() {
   if (count === 0) {
     await projectsCollection().insertMany([
       {
-        id: 1,
-        name: 'Portfolio Website',
-        description: 'Build and deploy a personal portfolio.',
-        progress: 75,
-        status: 'In Progress',
-      },
+  id: 1,
+  name: 'Portfolio Website',
+  description: 'Build and deploy a personal portfolio.',
+  progress: 75,
+  status: 'In Progress',
+  userId: 1,
+},
+     {
+  id: 2,
+  name: 'E-Commerce Website',
+  description: 'Develop an online shopping platform.',
+  progress: 45,
+  status: 'In Progress',
+  userId: 1,
+},
       {
-        id: 2,
-        name: 'E-Commerce Website',
-        description: 'Develop an online shopping platform.',
-        progress: 45,
-        status: 'In Progress',
-      },
-      {
-        id: 3,
-        name: 'Task Management App',
-        description: 'Create a productivity and task management system.',
-        progress: 100,
-        status: 'Completed',
-      },
+  id: 3,
+  name: 'Task Management App',
+  description: 'Create a productivity and task management system.',
+  progress: 100,
+  status: 'Completed',
+  userId: 2,
+},
     ])
 
     console.log('Default projects added to MongoDB')
@@ -100,7 +129,38 @@ app.put('/api/projects/:id', async (req, res) => {
 
     const { name, description, progress, status } = req.body
 
-    const updateData = {}
+// Input validation
+if (name !== undefined && !name.trim()) {
+  return res.status(400).json({
+    message: 'Project name cannot be empty',
+  })
+}
+
+if (description !== undefined && !description.trim()) {
+  return res.status(400).json({
+    message: 'Project description cannot be empty',
+  })
+}
+
+if (
+  progress !== undefined &&
+  (typeof progress !== 'number' || progress < 0 || progress > 100)
+) {
+  return res.status(400).json({
+    message: 'Progress must be a number between 0 and 100',
+  })
+}
+
+if (
+  status !== undefined &&
+  !['In Progress', 'Completed'].includes(status)
+) {
+  return res.status(400).json({
+    message: 'Invalid project status',
+  })
+}
+
+const updateData = {}
 
     if (name !== undefined) updateData.name = name
     if (description !== undefined) updateData.description = description
@@ -173,33 +233,41 @@ async function seedTasks() {
   if (count === 0) {
     await tasksCollection().insertMany([
       {
-        id: 1,
-        title: 'Create Login Page',
-        project: 'Portfolio Website',
-        priority: 'High',
-        status: 'Done',
-      },
+  id: 1,
+  title: 'Create Login Page',
+  project: 'Portfolio Website',
+  projectId: 1,
+  userId: 1,
+  priority: 'High',
+  status: 'Done',
+},
       {
-        id: 2,
-        title: 'Design Database',
-        project: 'E-Commerce Website',
-        priority: 'Medium',
-        status: 'In Progress',
-      },
+  id: 2,
+  title: 'Design Database',
+  project: 'E-Commerce Website',
+  projectId: 2,
+  userId: 1,
+  priority: 'Medium',
+  status: 'In Progress',
+},
       {
-        id: 3,
-        title: 'Build Product Page',
-        project: 'E-Commerce Website',
-        priority: 'Low',
-        status: 'Todo',
-      },
-      {
-        id: 4,
-        title: 'Create Dashboard UI',
-        project: 'Task Management App',
-        priority: 'High',
-        status: 'In Progress',
-      },
+  id: 3,
+  title: 'Build Product Page',
+  project: 'E-Commerce Website',
+  projectId: 2,
+  userId: 1,
+  priority: 'Low',
+  status: 'Todo',
+},
+     {
+  id: 4,
+  title: 'Create Dashboard UI',
+  project: 'Task Management App',
+  projectId: 3,
+  userId: 2,
+  priority: 'High',
+  status: 'In Progress',
+},
     ])
 
     console.log('Default tasks added to MongoDB')
@@ -242,20 +310,46 @@ app.get('/api/tasks/:id', async (req, res) => {
 })
 
 // POST create a task
+
 app.post('/api/tasks', async (req, res) => {
   try {
     const { title, project, priority, status } = req.body
 
-    if (!title || !project) {
+    // Input validation
+    if (!title || !title.trim()) {
       return res.status(400).json({
-        message: 'Task title and project are required',
+        message: 'Task title cannot be empty',
+      })
+    }
+
+    if (!project || !project.trim()) {
+      return res.status(400).json({
+        message: 'Task project cannot be empty',
+      })
+    }
+
+    if (
+      priority !== undefined &&
+      !['Low', 'Medium', 'High'].includes(priority)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid task priority',
+      })
+    }
+
+    if (
+      status !== undefined &&
+      !['Todo', 'In Progress', 'Done'].includes(status)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid task status',
       })
     }
 
     const newTask = {
       id: Date.now(),
-      title,
-      project,
+      title: title.trim(),
+      project: project.trim(),
       priority: priority || 'Medium',
       status: status || 'Todo',
     }
@@ -275,14 +369,57 @@ app.put('/api/tasks/:id', async (req, res) => {
   try {
     const taskId = Number(req.params.id)
 
+    if (isNaN(taskId)) {
+      return res.status(400).json({
+        message: 'Invalid task ID',
+      })
+    }
+
     const { title, project, priority, status } = req.body
+
+    // Input validation
+    if (title !== undefined && (!title || !title.trim())) {
+      return res.status(400).json({
+        message: 'Task title cannot be empty',
+      })
+    }
+
+    if (project !== undefined && (!project || !project.trim())) {
+      return res.status(400).json({
+        message: 'Task project cannot be empty',
+      })
+    }
+
+    if (
+      priority !== undefined &&
+      !['Low', 'Medium', 'High'].includes(priority)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid task priority',
+      })
+    }
+
+    if (
+      status !== undefined &&
+      !['Todo', 'In Progress', 'Done'].includes(status)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid task status',
+      })
+    }
 
     const updateData = {}
 
-    if (title !== undefined) updateData.title = title
-    if (project !== undefined) updateData.project = project
+    if (title !== undefined) updateData.title = title.trim()
+    if (project !== undefined) updateData.project = project.trim()
     if (priority !== undefined) updateData.priority = priority
     if (status !== undefined) updateData.status = status
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        message: 'No fields provided for update',
+      })
+    }
 
     const result = await tasksCollection().updateOne(
       { id: taskId },
@@ -299,8 +436,10 @@ app.put('/api/tasks/:id', async (req, res) => {
       id: taskId,
     })
 
-    res.json(updatedTask)
+    res.status(200).json(updatedTask)
   } catch (error) {
+    console.error('Update Task Error:', error)
+
     res.status(500).json({
       message: 'Failed to update task',
     })
@@ -343,6 +482,113 @@ app.delete('/api/tasks/:id', async (req, res) => {
 
 const usersCollection = () => db.collection('users')
 
+// ==================== DATABASE VALIDATION ====================
+
+async function setupDatabaseValidation() {
+
+  await db.command({
+    collMod: 'projects',
+    validator: {
+      $jsonSchema: {
+        bsonType: 'object',
+        required: ['name', 'description', 'progress', 'status'],
+        properties: {
+          name: {
+            bsonType: 'string'
+          },
+          description: {
+            bsonType: 'string'
+          },
+          progress: {
+            bsonType: ['int', 'double'],
+            minimum: 0,
+            maximum: 100
+          },
+          status: {
+            enum: ['In Progress', 'Completed']
+          }
+        }
+      }
+    },
+    validationLevel: 'strict',
+    validationAction: 'error'
+  })
+
+  await db.command({
+    collMod: 'tasks',
+    validator: {
+      $jsonSchema: {
+        bsonType: 'object',
+        required: ['title', 'project', 'priority', 'status'],
+        properties: {
+          title: {
+            bsonType: 'string'
+          },
+          project: {
+            bsonType: 'string'
+          },
+          priority: {
+            enum: ['Low', 'Medium', 'High']
+          },
+          status: {
+            enum: ['Todo', 'In Progress', 'Done']
+          }
+        }
+      }
+    },
+    validationLevel: 'strict',
+    validationAction: 'error'
+  })
+
+  await db.command({
+    collMod: 'users',
+    validator: {
+      $jsonSchema: {
+        bsonType: 'object',
+        required: ['name', 'email', 'role'],
+        properties: {
+          name: {
+            bsonType: 'string'
+          },
+          email: {
+            bsonType: 'string'
+          },
+          role: {
+            bsonType: 'string'
+          }
+        }
+      }
+    },
+    validationLevel: 'strict',
+    validationAction: 'error'
+  })
+
+  console.log('Database validation rules applied successfully')
+}
+async function updateExistingTaskRelationships() {
+  await tasksCollection().updateOne(
+    { id: 1 },
+    { $set: { projectId: 1, userId: 1 } }
+  )
+
+  await tasksCollection().updateOne(
+    { id: 2 },
+    { $set: { projectId: 2, userId: 1 } }
+  )
+
+  await tasksCollection().updateOne(
+    { id: 3 },
+    { $set: { projectId: 2, userId: 1 } }
+  )
+
+  await tasksCollection().updateOne(
+    { id: 4 },
+    { $set: { projectId: 3, userId: 2 } }
+  )
+
+  console.log('Existing task relationships updated')
+}
+
 async function seedUsers() {
   const count = await usersCollection().countDocuments()
 
@@ -368,43 +614,83 @@ async function seedUsers() {
 
 // ==================== USER APIs ====================
 
+// ==================== USER APIs ====================
+
 // GET all users
-app.get('/api/users', (req, res) => {
-  res.json(users)
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await usersCollection().find({}).toArray()
+    res.json(users)
+  } catch (error) {
+    res.status(500).json({
+      message: 'Failed to fetch users',
+    })
+  }
 })
 
 // GET one user
-app.get('/api/users/:id', (req, res) => {
-  const userId = Number(req.params.id)
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const userId = Number(req.params.id)
 
-  const user = users.find(
-    (user) => user.id === userId
-  )
+    const user = await usersCollection().findOne({
+      id: userId,
+    })
 
-  if (!user) {
-    return res.status(404).json({
-      message: 'User not found',
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+      })
+    }
+
+    res.json(user)
+  } catch (error) {
+    res.status(500).json({
+      message: 'Failed to fetch user',
     })
   }
-
-  res.json(user)
 })
 
-// POST create a user
+/// POST create a user
 app.post('/api/users', async (req, res) => {
   try {
     const { name, email, role } = req.body
 
-    if (!name || !email) {
+    // Input validation
+    if (!name || !name.trim()) {
       return res.status(400).json({
-        message: 'User name and email are required',
+        message: 'User name cannot be empty',
+      })
+    }
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        message: 'User email cannot be empty',
+      })
+    }
+
+    // Basic email validation
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+    if (!emailPattern.test(email.trim())) {
+      return res.status(400).json({
+        message: 'Invalid email format',
+      })
+    }
+
+    if (
+      role !== undefined &&
+      !['Developer', 'Project Manager'].includes(role)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid user role',
       })
     }
 
     const newUser = {
       id: Date.now(),
-      name,
-      email,
+      name: name.trim(),
+      email: email.trim(),
       role: role || 'Developer',
     }
 
@@ -412,88 +698,161 @@ app.post('/api/users', async (req, res) => {
 
     res.status(201).json(newUser)
   } catch (error) {
+    console.error('Create User Error:', error)
+
     res.status(500).json({
       message: 'Failed to create user',
     })
   }
 })
+
 // PUT update a user
-app.put('/api/users/:id', (req, res) => {
-  const userId = Number(req.params.id)
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const userId = Number(req.params.id)
 
-  const user = users.find(
-    (user) => user.id === userId
-  )
+    if (isNaN(userId)) {
+      return res.status(400).json({
+        message: 'Invalid user ID',
+      })
+    }
 
-  if (!user) {
-    return res.status(404).json({
-      message: 'User not found',
+    const { name, email, role } = req.body
+
+    // Input validation
+    if (name !== undefined && (!name || !name.trim())) {
+      return res.status(400).json({
+        message: 'User name cannot be empty',
+      })
+    }
+
+    if (email !== undefined && (!email || !email.trim())) {
+      return res.status(400).json({
+        message: 'User email cannot be empty',
+      })
+    }
+
+    if (email !== undefined) {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+      if (!emailPattern.test(email.trim())) {
+        return res.status(400).json({
+          message: 'Invalid email format',
+        })
+      }
+    }
+
+    if (
+      role !== undefined &&
+      !['Developer', 'Project Manager'].includes(role)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid user role',
+      })
+    }
+
+    const updateData = {}
+
+    if (name !== undefined) updateData.name = name.trim()
+    if (email !== undefined) updateData.email = email.trim()
+    if (role !== undefined) updateData.role = role
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        message: 'No fields provided for update',
+      })
+    }
+
+    const result = await usersCollection().updateOne(
+      { id: userId },
+      { $set: updateData }
+    )
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        message: 'User not found',
+      })
+    }
+
+    const updatedUser = await usersCollection().findOne({
+      id: userId,
+    })
+
+    res.status(200).json(updatedUser)
+  } catch (error) {
+    console.error('Update User Error:', error)
+
+    res.status(500).json({
+      message: 'Failed to update user',
     })
   }
-
-  const { name, email, role } = req.body
-
-  if (name !== undefined) {
-    user.name = name
-  }
-
-  if (email !== undefined) {
-    user.email = email
-  }
-
-  if (role !== undefined) {
-    user.role = role
-  }
-
-  res.json(user)
 })
-
 // DELETE a user
-app.delete('/api/users/:id', (req, res) => {
-  const userId = Number(req.params.id)
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const userId = Number(req.params.id)
 
-  const userIndex = users.findIndex(
-    (user) => user.id === userId
-  )
+    const user = await usersCollection().findOne({
+      id: userId,
+    })
 
-  if (userIndex === -1) {
-    return res.status(404).json({
-      message: 'User not found',
+    if (!user) {
+      return res.status(404).json({
+        message: 'User not found',
+      })
+    }
+
+    await usersCollection().deleteOne({
+      id: userId,
+    })
+
+    res.json({
+      message: 'User deleted successfully',
+      user,
+    })
+  } catch (error) {
+    res.status(500).json({
+      message: 'Failed to delete user',
     })
   }
+})
+// ==================== CENTRALIZED ERROR HANDLING ====================
 
-  const deletedUser = users.splice(userIndex, 1)
+app.use((err, req, res, next) => {
+  console.error('Server Error:', err)
 
-  res.json({
-    message: 'User deleted successfully',
-    user: deletedUser[0],
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal server error',
   })
 })
-
 // ==================== START SERVER ====================
 
 if (process.env.VERCEL) {
   module.exports = async (req, res) => {
     try {
       await connectDB()
-      await seedProjects()
-      await seedTasks()
-      await seedUsers()
-
+await setupDatabaseValidation()
+await seedProjects()
+await seedTasks()
+await updateExistingTaskRelationships()
+await seedUsers()
       app(req, res)
     } catch (error) {
-      console.error('MongoDB connection failed:', error)
+      console.error('Server error:', error)
+
       res.status(500).json({
-        message: 'Database connection failed',
+        message: 'Server error',
       })
     }
   }
 } else {
   connectDB()
-    .then(async () => {
-      await seedProjects()
-      await seedTasks()
-      await seedUsers()
+  .then(async () => {
+    await setupDatabaseValidation()
+    await seedProjects()
+    await seedTasks()
+    await updateExistingTaskRelationships()
+    await seedUsers()
 
       app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`)

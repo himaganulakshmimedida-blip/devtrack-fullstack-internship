@@ -1,4 +1,10 @@
-function TaskCard({ title, project, priority, status }) {
+function TaskCard({
+  title,
+  project,
+  priority,
+  status,
+  onStatusChange,
+}) {
   return (
     <div className="task-card">
       <div>
@@ -11,17 +17,14 @@ function TaskCard({ title, project, priority, status }) {
           {priority}
         </span>
 
-        <span
-          className={`status ${
-            status === 'Done'
-              ? 'done'
-              : status === 'In Progress'
-                ? 'progress-status'
-                : 'todo'
-          }`}
+        <select
+          value={status}
+          onChange={(e) => onStatusChange(e.target.value)}
         >
-          {status}
-        </span>
+          <option value="Todo">Todo</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Done">Done</option>
+        </select>
       </div>
     </div>
   )

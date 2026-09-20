@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
-const API_URL = 'https://backend-omega-wheat-ny2fuey01d.vercel.app/api'
+const API_URL = 'http://localhost:5000/api'
 
 function Projects({ username, onLogout }) {
  const [projects, setProjects] = useState([])

@@ -8,11 +8,15 @@ import Login from './Login'
 import Logout from './logout'
 import Projects from './projects'
 import Tasks from './Tasks'
-const API_URL = 'https://backend-omega-wheat-ny2fuev01d.vercel.app'
+const API_URL = 'http://localhost:5000'
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [username, setUsername] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(
+  localStorage.getItem('isLoggedIn') === 'true'
+)
+  const [username, setUsername] = useState(
+  localStorage.getItem('username') || ''
+)
   const [showLogout, setShowLogout] = useState(false)
 
   const [currentPage, setCurrentPage] = useState(
@@ -21,7 +25,16 @@ function App() {
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
-  const [loading] = useState(false)
+ const [loading, setLoading] = useState(false)
+const [dataLoading, setDataLoading] = useState(true)
+
+const [projects, setProjects] = useState([])
+const [tasks, setTasks] = useState([])
+
+const [aiPrompt, setAiPrompt] = useState('')
+const [aiResponse, setAiResponse] = useState('')
+const [aiTasks, setAiTasks] = useState([])
+
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -38,6 +51,24 @@ function App() {
       window.removeEventListener('hashchange', handleHashChange)
     }
   }, [])
+  useEffect(() => {
+  setDataLoading(true)
+
+  Promise.all([
+    fetch(`${API_URL}/api/projects`).then((response) => response.json()),
+    fetch(`${API_URL}/api/tasks`).then((response) => response.json())
+  ])
+    .then(([projectsData, tasksData]) => {
+      setProjects(projectsData)
+      setTasks(tasksData)
+    })
+    .catch((error) => {
+      console.error('Failed to fetch data:', error)
+    })
+    .finally(() => {
+      setDataLoading(false)
+    })
+}, [])
     useEffect(() => {
     fetch(`${API_URL}/`)
       .then((response) => response.json())
@@ -50,59 +81,53 @@ function App() {
   }, [])
 
   const handleLogin = (user) => {
-    setUsername(user)
-    setIsLoggedIn(true)
-    setShowLogout(false)
+  setUsername(user)
+  setIsLoggedIn(true)
+  localStorage.setItem('isLoggedIn', 'true')
+  localStorage.setItem('username', user)
+  setShowLogout(false)
 
-    window.location.hash = 'dashboard'
-  }
-
+  window.location.hash = 'dashboard'
+}
   const handleLogout = () => {
-    setUsername('')
-    setIsLoggedIn(false)
-    setShowLogout(true)
+  setUsername('')
+  setIsLoggedIn(false)
+  localStorage.removeItem('isLoggedIn')
+  localStorage.removeItem('username')
+  setShowLogout(true)
 
-    window.location.hash = ''
+  window.location.hash = ''
+}
+  const handleStatusChange = async (taskId, newStatus) => {
+  try {
+    const response = await fetch(`${API_URL}/api/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status: newStatus,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to update task')
+    }
+
+    setTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === taskId
+          ? { ...task, status: newStatus }
+          : task
+      )
+    )
+  } catch (error) {
+    console.error('Status update failed:', error)
+    alert('Failed to update task status')
   }
-
-  const projects = [
-    {
-      id: 1,
-      name: 'Portfolio Website',
-      description: 'Build and deploy a personal portfolio.',
-      progress: 75,
-    },
-    {
-      id: 2,
-      name: 'E-Commerce Website',
-      description: 'Develop an online shopping platform.',
-      progress: 45,
-    },
-  ]
-
-  const tasks = [
-    {
-      id: 1,
-      title: 'Create Login Page',
-      project: 'Portfolio Website',
-      priority: 'High',
-      status: 'Done',
-    },
-    {
-      id: 2,
-      title: 'Design Database',
-      project: 'E-Commerce Website',
-      priority: 'Medium',
-      status: 'In Progress',
-    },
-    {
-      id: 3,
-      title: 'Build Product Page',
-      project: 'E-Commerce Website',
-      priority: 'Low',
-      status: 'Todo',
-    },
-  ]
+}
 
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch = task.title
@@ -170,25 +195,145 @@ function App() {
 
           <div className="stat-card">
             <h3>Total Projects</h3>
-            <strong>4</strong>
+            <strong>{projects.length}</strong>
           </div>
 
           <div className="stat-card">
             <h3>Total Tasks</h3>
-            <strong>20</strong>
+           <strong>{tasks.length}</strong>
           </div>
 
           <div className="stat-card">
             <h3>Completed</h3>
-            <strong>12</strong>
+            <strong>
+  {tasks.filter((task) => task.status === 'Done').length}
+</strong>
           </div>
 
           <div className="stat-card">
             <h3>In Progress</h3>
-            <strong>5</strong>
+           <strong>
+  {tasks.filter((task) => task.status === 'In Progress').length}
+</strong>
           </div>
 
         </section>
+        <section className="ai-section">
+
+  <h2>🤖 AI Task Generator</h2>
+
+  <p>
+    Ask AI to generate tasks for your project.
+  </p>
+
+  <textarea
+    placeholder="Example: Give me 3 high priority tasks for an e-commerce website."
+    value={aiPrompt}
+    onChange={(e) => setAiPrompt(e.target.value)}
+    rows="4"
+  />
+
+  <button
+    onClick={async () => {
+      if (!aiPrompt.trim()) {
+        alert('Please enter a prompt.')
+        return
+      }
+
+      try {
+        setLoading(true)
+        setAiResponse('')
+
+        const response = await fetch(`${API_URL}/api/ai`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: aiPrompt,
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.message || 'AI request failed')
+        }
+
+        setAiResponse(data.answer)
+        setAiTasks(data.answer)
+      } catch (error) {
+        console.error('AI Error:', error)
+        setAiResponse('Unable to generate AI response.')
+      } finally {
+        setLoading(false)
+      }
+    }}
+  >
+    {loading ? 'Generating...' : 'Generate AI Tasks'}
+  </button>
+
+ {aiResponse && (
+  <div className="ai-response">
+    <h3>AI Response</h3>
+
+    <pre>{aiResponse}</pre>
+
+   <button
+  onClick={async () => {
+    try {
+      const matches = [...aiTasks.matchAll(/\d+\.\s*\*\*(.*?)\*\*/g)]
+
+      const taskTitles = matches.map((match) => match[1].trim())
+
+      if (taskTitles.length === 0) {
+        alert('Could not find separate AI tasks.')
+        return
+      }
+
+      const createdTasks = []
+
+      for (const title of taskTitles) {
+        const response = await fetch(`${API_URL}/api/tasks`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title,
+            project: 'AI Generated Project',
+            priority: 'High',
+            status: 'Todo',
+          }),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to add task')
+        }
+
+        createdTasks.push(data)
+      }
+
+      setTasks((prevTasks) => [
+        ...prevTasks,
+        ...createdTasks,
+      ])
+
+      alert(`${createdTasks.length} AI tasks added successfully!`)
+    } catch (error) {
+      console.error(error)
+      alert('Failed to add AI tasks')
+    }
+  }}
+>
+  Add to Tasks
+</button>
+  </div>
+)}
+
+</section>
 
         <section className="projects">
 
@@ -236,7 +381,7 @@ function App() {
 
           <div className="task-list">
 
-            {loading ? (
+            {dataLoading ? (
               <div className="loading-state">
                 <p>Loading tasks...</p>
               </div>
@@ -244,12 +389,15 @@ function App() {
               <>
                 {filteredTasks.map((task) => (
                   <TaskCard
-                    key={task.id}
-                    title={task.title}
-                    project={task.project}
-                    priority={task.priority}
-                    status={task.status}
-                  />
+  key={task.id}
+  title={task.title}
+  project={task.project}
+  priority={task.priority}
+  status={task.status}
+  onStatusChange={(newStatus) =>
+    handleStatusChange(task.id, newStatus)
+  }
+/>
                 ))}
 
                 {filteredTasks.length === 0 && (
