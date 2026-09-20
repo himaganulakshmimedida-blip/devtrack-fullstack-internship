@@ -1,5 +1,15 @@
-import API_URL from '../config/api'
+import API_URL, { PRODUCTION_API_URL } from '../config/api'
 import { clearAuthSession, getAuthToken } from './auth'
+
+function resolveApiUrl() {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return PRODUCTION_API_URL
+    }
+  }
+  return API_URL
+}
 
 export async function apiFetch(path, options = {}) {
   const { skipUnauthorizedHandler = false, ...fetchOptions } = options
@@ -17,7 +27,7 @@ export async function apiFetch(path, options = {}) {
   let response
 
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetch(`${resolveApiUrl()}${path}`, {
       ...fetchOptions,
       headers,
     })
