@@ -1,6 +1,8 @@
 require('dotenv').config({ path: './.env' })
+const crypto = require('crypto')
 const { MongoClient } = require('mongodb')
-const { generateAI } = require('./ai')
+const { generateStructuredTasks } = require('./ai')
+const { validateSignupPassword } = require('./passwordValidation')
 const client = new MongoClient(process.env.MONGODB_URI)
 
 let db
@@ -19,22 +21,35 @@ const PORT = 5000
 
 app.use(cors())
 app.use(express.json())
+
+function hashPassword(password) {
+  return crypto.createHash('sha256').update(password).digest('hex')
+}
+
+app.get('/', (req, res) => {
+  res.json({ message: 'DevTrack API is running' })
+})
+
 // ==================== AI API ====================
 
 app.post('/api/ai', async (req, res) => {
   try {
-    const { prompt } = req.body
+    const { prompt, projectContext } = req.body
 
-    if (!prompt) {
+    if (!prompt || !String(prompt).trim()) {
       return res.status(400).json({
         message: 'Prompt is required',
       })
     }
 
-    const answer = await generateAI(prompt)
+    const { tasks, raw } = await generateStructuredTasks(
+      String(prompt).trim(),
+      projectContext ? String(projectContext).trim() : ''
+    )
 
     res.json({
-      answer,
+      answer: raw,
+      tasks,
     })
   } catch (error) {
     console.error('AI Error:', error)
@@ -95,14 +110,51 @@ app.get('/api/projects', async (req, res) => {
   }
 })
 
+app.get('/api/projects/:id', async (req, res) => {
+  try {
+    const projectId = Number(req.params.id)
+
+    if (isNaN(projectId)) {
+      return res.status(400).json({
+        message: 'Invalid project ID',
+      })
+    }
+
+    const project = await projectsCollection().findOne({
+      id: projectId,
+    })
+
+    if (!project) {
+      return res.status(404).json({
+        message: 'Project not found',
+      })
+    }
+
+    res.json(project)
+  } catch (error) {
+    res.status(500).json({
+      message: 'Failed to fetch project',
+    })
+  }
+})
+
 app.post('/api/projects', async (req, res) => {
   try {
-    const { name, description } = req.body
+    const { name, description, dueDate } = req.body
 
     if (!name || !description) {
       return res.status(400).json({
         message: 'Project name and description are required',
       })
+    }
+
+    if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
+      const parsedDueDate = new Date(dueDate)
+      if (Number.isNaN(parsedDueDate.getTime())) {
+        return res.status(400).json({
+          message: 'Invalid due date',
+        })
+      }
     }
 
     const newProject = {
@@ -111,6 +163,10 @@ app.post('/api/projects', async (req, res) => {
       description,
       progress: 0,
       status: 'In Progress',
+    }
+
+    if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
+      newProject.dueDate = new Date(dueDate).toISOString()
     }
 
     await projectsCollection().insertOne(newProject)
@@ -132,7 +188,7 @@ app.put('/api/projects/:id', async (req, res) => {
   })
 }
 
-    const { name, description, progress, status } = req.body
+    const { name, description, progress, status, dueDate } = req.body
 
 // Input validation
 if (name !== undefined && !name.trim()) {
@@ -165,12 +221,27 @@ if (
   })
 }
 
+if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
+  const parsedDueDate = new Date(dueDate)
+  if (Number.isNaN(parsedDueDate.getTime())) {
+    return res.status(400).json({
+      message: 'Invalid due date',
+    })
+  }
+}
+
 const updateData = {}
 
     if (name !== undefined) updateData.name = name
     if (description !== undefined) updateData.description = description
     if (progress !== undefined) updateData.progress = progress
     if (status !== undefined) updateData.status = status
+    if (dueDate !== undefined) {
+      updateData.dueDate =
+        dueDate === null || dueDate === ''
+          ? null
+          : new Date(dueDate).toISOString()
+    }
 
     const result = await projectsCollection().updateOne(
       { id: projectId },
@@ -318,7 +389,16 @@ app.get('/api/tasks/:id', async (req, res) => {
 
 app.post('/api/tasks', async (req, res) => {
   try {
-    const { title, project, priority, status } = req.body
+    const {
+      title,
+      project,
+      priority,
+      status,
+      assignedTo,
+      assigneeUserId,
+      dueDate,
+      projectId,
+    } = req.body
 
     // Input validation
     if (!title || !title.trim()) {
@@ -351,12 +431,38 @@ app.post('/api/tasks', async (req, res) => {
       })
     }
 
+    if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
+      const parsedDueDate = new Date(dueDate)
+      if (Number.isNaN(parsedDueDate.getTime())) {
+        return res.status(400).json({
+          message: 'Invalid due date',
+        })
+      }
+    }
+
     const newTask = {
       id: Date.now(),
       title: title.trim(),
       project: project.trim(),
       priority: priority || 'Medium',
       status: status || 'Todo',
+      updatedAt: new Date().toISOString(),
+    }
+
+    if (assignedTo !== undefined && assignedTo !== null && assignedTo !== '') {
+      newTask.assignedTo = String(assignedTo).trim()
+    }
+
+    if (assigneeUserId !== undefined && assigneeUserId !== null) {
+      newTask.assigneeUserId = Number(assigneeUserId)
+    }
+
+    if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
+      newTask.dueDate = new Date(dueDate).toISOString()
+    }
+
+    if (projectId !== undefined && projectId !== null) {
+      newTask.projectId = Number(projectId)
     }
 
     await tasksCollection().insertOne(newTask)
@@ -380,7 +486,16 @@ app.put('/api/tasks/:id', async (req, res) => {
       })
     }
 
-    const { title, project, priority, status } = req.body
+    const {
+      title,
+      project,
+      priority,
+      status,
+      assignedTo,
+      assigneeUserId,
+      dueDate,
+      projectId,
+    } = req.body
 
     // Input validation
     if (title !== undefined && (!title || !title.trim())) {
@@ -413,12 +528,45 @@ app.put('/api/tasks/:id', async (req, res) => {
       })
     }
 
+    if (dueDate !== undefined && dueDate !== null && dueDate !== '') {
+      const parsedDueDate = new Date(dueDate)
+      if (Number.isNaN(parsedDueDate.getTime())) {
+        return res.status(400).json({
+          message: 'Invalid due date',
+        })
+      }
+    }
+
     const updateData = {}
 
     if (title !== undefined) updateData.title = title.trim()
     if (project !== undefined) updateData.project = project.trim()
     if (priority !== undefined) updateData.priority = priority
     if (status !== undefined) updateData.status = status
+    if (assignedTo !== undefined) {
+      updateData.assignedTo =
+        assignedTo === null || assignedTo === ''
+          ? null
+          : String(assignedTo).trim()
+    }
+    if (assigneeUserId !== undefined) {
+      updateData.assigneeUserId =
+        assigneeUserId === null || assigneeUserId === ''
+          ? null
+          : Number(assigneeUserId)
+    }
+    if (dueDate !== undefined) {
+      updateData.dueDate =
+        dueDate === null || dueDate === ''
+          ? null
+          : new Date(dueDate).toISOString()
+    }
+    if (projectId !== undefined) {
+      updateData.projectId =
+        projectId === null || projectId === '' ? null : Number(projectId)
+    }
+
+    updateData.updatedAt = new Date().toISOString()
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
@@ -511,6 +659,9 @@ async function setupDatabaseValidation() {
           },
           status: {
             enum: ['In Progress', 'Completed']
+          },
+          dueDate: {
+            bsonType: ['string', 'null']
           }
         }
       }
@@ -537,6 +688,21 @@ async function setupDatabaseValidation() {
           },
           status: {
             enum: ['Todo', 'In Progress', 'Done']
+          },
+          assignedTo: {
+            bsonType: ['string', 'null']
+          },
+          assigneeUserId: {
+            bsonType: ['int', 'double', 'null']
+          },
+          dueDate: {
+            bsonType: ['string', 'null']
+          },
+          projectId: {
+            bsonType: ['int', 'double', 'null']
+          },
+          updatedAt: {
+            bsonType: ['string', 'null']
           }
         }
       }
@@ -559,6 +725,9 @@ async function setupDatabaseValidation() {
             bsonType: 'string'
           },
           role: {
+            bsonType: 'string'
+          },
+          passwordHash: {
             bsonType: 'string'
           }
         }
@@ -604,12 +773,14 @@ async function seedUsers() {
         name: 'John Doe',
         email: 'john@example.com',
         role: 'Developer',
+        passwordHash: hashPassword('password123'),
       },
       {
         id: 2,
         name: 'Jane Smith',
         email: 'jane@example.com',
         role: 'Project Manager',
+        passwordHash: hashPassword('password123'),
       },
     ])
 
@@ -617,9 +788,126 @@ async function seedUsers() {
   }
 }
 
-// ==================== USER APIs ====================
+async function ensureSeedUserPasswords() {
+  await usersCollection().updateMany(
+    { passwordHash: { $exists: false } },
+    { $set: { passwordHash: hashPassword('password123') } }
+  )
+}
 
 // ==================== USER APIs ====================
+
+// ==================== AUTH APIs ====================
+
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        message: 'Name is required',
+      })
+    }
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        message: 'Email is required',
+      })
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+    if (!emailPattern.test(email.trim())) {
+      return res.status(400).json({
+        message: 'Invalid email format',
+      })
+    }
+
+    const passwordError = validateSignupPassword(password)
+    if (passwordError) {
+      return res.status(400).json({
+        message: passwordError,
+      })
+    }
+
+    if (
+      role !== undefined &&
+      !['Developer', 'Project Manager'].includes(role)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid user role',
+      })
+    }
+
+    const existingUser = await usersCollection().findOne({
+      email: email.trim().toLowerCase(),
+    })
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: 'An account with this email already exists',
+      })
+    }
+
+    const newUser = {
+      id: Date.now(),
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      role: role || 'Developer',
+      passwordHash: hashPassword(password),
+    }
+
+    await usersCollection().insertOne(newUser)
+
+    res.status(201).json({
+      id: newUser.id,
+      name: newUser.name,
+      email: newUser.email,
+      role: newUser.role,
+    })
+  } catch (error) {
+    console.error('Signup Error:', error)
+
+    res.status(500).json({
+      message: 'Failed to create account',
+    })
+  }
+})
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body
+
+    if (!email || !email.trim() || !password) {
+      return res.status(400).json({
+        message: 'Email and password are required',
+      })
+    }
+
+    const user = await usersCollection().findOne({
+      email: email.trim().toLowerCase(),
+    })
+
+    if (!user || user.passwordHash !== hashPassword(password)) {
+      return res.status(401).json({
+        message: 'Invalid email or password',
+      })
+    }
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    })
+  } catch (error) {
+    console.error('Login Error:', error)
+
+    res.status(500).json({
+      message: 'Login failed',
+    })
+  }
+})
 
 // GET all users
 app.get('/api/users', async (req, res) => {
@@ -841,6 +1129,7 @@ await seedProjects()
 await seedTasks()
 await updateExistingTaskRelationships()
 await seedUsers()
+await ensureSeedUserPasswords()
       app(req, res)
     } catch (error) {
       console.error('Server error:', error)
@@ -858,6 +1147,7 @@ await seedUsers()
     await seedTasks()
     await updateExistingTaskRelationships()
     await seedUsers()
+await ensureSeedUserPasswords()
 
       app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`)

@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
+import DueDateBadge from './components/DueDateBadge'
+import ProjectDueDate from './components/ProjectDueDate'
+import { formatDueDate, toDateInputValue } from './utils/dueDate'
 const API_URL = 'http://localhost:5000/api'
 
 function Projects({ username, onLogout }) {
  const [projects, setProjects] = useState([])
+ const [selectedProject, setSelectedProject] = useState(null)
+ const [projectTasks, setProjectTasks] = useState([])
+ const [detailsLoading, setDetailsLoading] = useState(false)
+ const [editingProject, setEditingProject] = useState(null)
+ const [editName, setEditName] = useState('')
+ const [editDescription, setEditDescription] = useState('')
+ const [editProgress, setEditProgress] = useState(0)
+ const [editStatus, setEditStatus] = useState('In Progress')
+ const [editDueDate, setEditDueDate] = useState('')
  useEffect(() => {
   fetch(`${API_URL}/projects`)
     .then((response) => response.json())
@@ -17,6 +29,7 @@ function Projects({ username, onLogout }) {
   const [showForm, setShowForm] = useState(false)
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
+  const [projectDueDate, setProjectDueDate] = useState('')
 
   const handleCreateProject = async (e) => {
   e.preventDefault()
@@ -35,6 +48,7 @@ function Projects({ username, onLogout }) {
       body: JSON.stringify({
         name: projectName,
         description: projectDescription,
+        dueDate: projectDueDate || null,
       }),
     })
 
@@ -51,6 +65,7 @@ function Projects({ username, onLogout }) {
 
     setProjectName('')
     setProjectDescription('')
+    setProjectDueDate('')
     setShowForm(false)
   } catch (error) {
     console.error('Error creating project:', error)
@@ -82,6 +97,97 @@ const handleDeleteProject = async (projectId) => {
     alert('Something went wrong')
   }
 }
+
+const openProjectDetails = async (projectId) => {
+  try {
+    setDetailsLoading(true)
+
+    const [projectResponse, tasksResponse] = await Promise.all([
+      fetch(`${API_URL}/projects/${projectId}`),
+      fetch(`${API_URL}/tasks`),
+    ])
+
+    const projectData = await projectResponse.json()
+    const tasksData = await tasksResponse.json()
+
+    if (!projectResponse.ok) {
+      throw new Error(projectData.message || 'Failed to load project')
+    }
+
+    const relatedTasks = tasksData.filter(
+      (task) =>
+        task.projectId === projectId ||
+        task.project === projectData.name
+    )
+
+    setSelectedProject(projectData)
+    setProjectTasks(relatedTasks)
+  } catch (error) {
+    console.error('Error loading project details:', error)
+    alert('Unable to load project details.')
+  } finally {
+    setDetailsLoading(false)
+  }
+}
+
+const startEditProject = (project) => {
+  setEditingProject(project)
+  setEditName(project.name)
+  setEditDescription(project.description)
+  setEditProgress(project.progress)
+  setEditStatus(project.status)
+  setEditDueDate(toDateInputValue(project.dueDate))
+}
+
+const handleUpdateProject = async (e) => {
+  e.preventDefault()
+
+  if (!editName.trim() || !editDescription.trim()) {
+    alert('Project name and description are required.')
+    return
+  }
+
+  try {
+    const response = await fetch(
+      `${API_URL}/projects/${editingProject.id}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editName,
+          description: editDescription,
+          progress: Number(editProgress),
+          status: editStatus,
+          dueDate: editDueDate || null,
+        }),
+      }
+    )
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to update project')
+    }
+
+    setProjects((previousProjects) =>
+      previousProjects.map((project) =>
+        project.id === data.id ? data : project
+      )
+    )
+
+    if (selectedProject?.id === data.id) {
+      setSelectedProject(data)
+    }
+
+    setEditingProject(null)
+  } catch (error) {
+    console.error('Error updating project:', error)
+    alert('Unable to update project.')
+  }
+}
+
   return (
     <div className="app">
 
@@ -93,119 +199,43 @@ const handleDeleteProject = async (projectId) => {
 
       <main className="dashboard">
 
-        {/* PAGE HEADING */}
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '30px',
-            gap: '20px',
-          }}
-        >
+        <div className="page-header-row">
 
           <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: '34px',
-                fontWeight: 800,
-              }}
-            >
-              Projects
-            </h1>
+            <h1>Projects</h1>
 
-            <p
-              style={{
-                margin: '8px 0 0',
-                color: '#64748b',
-                fontSize: '15px',
-              }}
-            >
+            <p>
               View and manage all your projects.
             </p>
           </div>
 
-          {/* CREATE PROJECT BUTTON */}
-
           <button
             type="button"
+            className="create-project-button"
             onClick={() => setShowForm(true)}
-            style={{
-              display: 'block',
-              padding: '13px 20px',
-              border: 'none',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              boxShadow: '0 8px 20px rgba(37, 99, 235, 0.25)',
-            }}
           >
             + Create Project
           </button>
 
         </div>
 
-        {/* CREATE PROJECT FORM */}
-
         {showForm && (
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '18px',
-              padding: '25px',
-              marginBottom: '25px',
-              boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-            }}
-          >
+          <div className="project-form-card">
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '20px',
-              }}
-            >
+            <div className="form-header">
 
               <div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: '21px',
-                  }}
-                >
-                  Create New Project
-                </h2>
+                <h2>Create New Project</h2>
 
-                <p
-                  style={{
-                    margin: '6px 0 0',
-                    color: '#64748b',
-                  }}
-                >
+                <p>
                   Add a new project to your workspace.
                 </p>
               </div>
 
               <button
                 type="button"
+                className="close-form-button"
                 onClick={() => setShowForm(false)}
-                style={{
-                  border: 'none',
-                  background: '#f1f5f9',
-                  borderRadius: '8px',
-                  width: '34px',
-                  height: '34px',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                }}
               >
                 ×
               </button>
@@ -214,44 +244,16 @@ const handleDeleteProject = async (projectId) => {
 
             <form onSubmit={handleCreateProject}>
 
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '7px',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                }}
-              >
-                Project Name
-              </label>
+              <label>Project Name</label>
 
               <input
                 type="text"
                 placeholder="Enter project name"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '13px',
-                  marginBottom: '18px',
-                  border: '1px solid #dbe3ee',
-                  borderRadius: '10px',
-                  fontSize: '14px',
-                  outline: 'none',
-                }}
               />
 
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '7px',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                }}
-              >
-                Description
-              </label>
+              <label>Description</label>
 
               <textarea
                 placeholder="Enter project description"
@@ -260,53 +262,29 @@ const handleDeleteProject = async (projectId) => {
                   setProjectDescription(e.target.value)
                 }
                 rows="4"
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '13px',
-                  marginBottom: '18px',
-                  border: '1px solid #dbe3ee',
-                  borderRadius: '10px',
-                  fontSize: '14px',
-                  resize: 'vertical',
-                }}
               />
 
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '10px',
-                }}
-              >
+              <label>Due Date (optional)</label>
+
+              <input
+                type="date"
+                value={projectDueDate}
+                onChange={(e) => setProjectDueDate(e.target.value)}
+              />
+
+              <div className="project-form-actions">
 
                 <button
                   type="button"
+                  className="cancel-project-button"
                   onClick={() => setShowForm(false)}
-                  style={{
-                    padding: '11px 18px',
-                    border: 'none',
-                    borderRadius: '9px',
-                    background: '#f1f5f9',
-                    color: '#475569',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  style={{
-                    padding: '11px 18px',
-                    border: 'none',
-                    borderRadius: '9px',
-                    background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
+                  className="save-project-button"
                 >
                   Create Project
                 </button>
@@ -317,8 +295,6 @@ const handleDeleteProject = async (projectId) => {
 
           </div>
         )}
-
-        {/* PROJECT CARDS */}
 
         <div className="projects-grid">
 
@@ -333,6 +309,7 @@ const handleDeleteProject = async (projectId) => {
                 <div>
                   <h2>{project.name}</h2>
                   <p>{project.description}</p>
+                  <ProjectDueDate dueDate={project.dueDate} />
                 </div>
 
                 <span
@@ -367,30 +344,145 @@ const handleDeleteProject = async (projectId) => {
 
               </div>
 
-              <button className="view-project-button">
+              <button
+                className="view-project-button"
+                onClick={() => openProjectDetails(project.id)}
+                disabled={detailsLoading}
+              >
                 View Project
               </button>
-              <button
-  onClick={() => handleDeleteProject(project.id)}
-  style={{
-    marginTop: '10px',
-    padding: '8px 14px',
-    border: '1px solid #fecaca',
-    borderRadius: '8px',
-    background: '#fff5f5',
-    color: '#4422ce',
-    fontSize: '13px',
-    fontWeight: 600,
-    cursor: 'pointer',
-  }}
->
-  🗑 Delete
-</button>
+
+              <div className="card-actions">
+                <button
+                  type="button"
+                  className="btn-edit"
+                  onClick={() => startEditProject(project)}
+                >
+                  ✏ Edit
+                </button>
+                <button
+                  type="button"
+                  className="btn-delete"
+                  onClick={() => handleDeleteProject(project.id)}
+                >
+                  🗑 Delete
+                </button>
+              </div>
 
             </div>
           ))}
 
         </div>
+
+        {editingProject && (
+          <div className="modal-overlay">
+            <div className="modal-card">
+              <h2>Edit Project</h2>
+              <form onSubmit={handleUpdateProject}>
+                <label>Project Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+
+                <label>Description</label>
+                <textarea
+                  rows="4"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                />
+
+                <label>Progress (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={editProgress}
+                  onChange={(e) => setEditProgress(e.target.value)}
+                />
+
+                <label>Status</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                >
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                </select>
+
+                <label>Due Date (optional)</label>
+                <input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                />
+
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    onClick={() => setEditingProject(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {selectedProject && (
+          <div className="modal-overlay">
+            <div className="modal-card project-details-card">
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => {
+                  setSelectedProject(null)
+                  setProjectTasks([])
+                }}
+              >
+                ×
+              </button>
+
+              <h2>{selectedProject.name}</h2>
+              <p>{selectedProject.description}</p>
+
+              <div className="project-details-grid">
+                <div>
+                  <span>Status</span>
+                  <strong>{selectedProject.status}</strong>
+                </div>
+                <div>
+                  <span>Progress</span>
+                  <strong>{selectedProject.progress}%</strong>
+                </div>
+                <div>
+                  <span>Related Tasks</span>
+                  <strong>{projectTasks.length}</strong>
+                </div>
+                {selectedProject.dueDate && (
+                  <div>
+                    <span>Due Date</span>
+                    <strong>{formatDueDate(selectedProject.dueDate)}</strong>
+                    <DueDateBadge dueDate={selectedProject.dueDate} />
+                  </div>
+                )}
+              </div>
+
+              {projectTasks.length > 0 && (
+                <ul className="project-task-list">
+                  {projectTasks.map((task) => (
+                    <li key={task.id}>
+                      {task.title} · {task.status} · {task.priority}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
 
       </main>
 

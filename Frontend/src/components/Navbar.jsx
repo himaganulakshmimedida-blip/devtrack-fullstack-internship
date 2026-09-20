@@ -31,6 +31,13 @@ function Navbar({ username, onLogout, currentPage }) {
           Tasks
         </button>
 
+        <button
+          className={currentPage === 'ai-assistant' ? 'nav-active' : ''}
+          onClick={() => navigate('ai-assistant')}
+        >
+          AI Assistant
+        </button>
+
       </nav>
 
       <div className="profile">

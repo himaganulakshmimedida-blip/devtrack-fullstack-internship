@@ -1,14 +1,27 @@
 import { useEffect, useState } from 'react'
 import Navbar from './components/Navbar'
 import TaskCard from './components/TaskCard'
+import { toDateInputValue } from './utils/dueDate'
 const API_URL = 'http://localhost:5000/api'
 function Tasks({ username, onLogout }) {
   const [tasks, setTasks] = useState([])
+  const [projects, setProjects] = useState([])
+  const [users, setUsers] = useState([])
+  const [editingTask, setEditingTask] = useState(null)
   useEffect(() => {
-  fetch(`${API_URL}/tasks`)
-    .then((response) => response.json())
-    .then((data) => {
-      setTasks(data)
+  Promise.all([
+    fetch(`${API_URL}/tasks`),
+    fetch(`${API_URL}/projects`),
+    fetch(`${API_URL}/users`),
+  ])
+    .then(async ([tasksResponse, projectsResponse, usersResponse]) => {
+      const tasksData = await tasksResponse.json()
+      const projectsData = await projectsResponse.json()
+      const usersData = await usersResponse.json()
+
+      setTasks(tasksData)
+      setProjects(projectsData)
+      setUsers(usersData)
     })
     .catch((error) => {
       console.error('Error loading tasks:', error)
@@ -30,9 +43,38 @@ function Tasks({ username, onLogout }) {
   const [showForm, setShowForm] = useState(false)
 
   const [taskTitle, setTaskTitle] = useState('')
-  const [taskProject, setTaskProject] = useState('Portfolio Website')
+  const [taskProject, setTaskProject] = useState('')
   const [taskPriority, setTaskPriority] = useState('Medium')
   const [taskStatus, setTaskStatus] = useState('Todo')
+  const [taskAssigneeUserId, setTaskAssigneeUserId] = useState('')
+  const [taskDueDate, setTaskDueDate] = useState('')
+
+  useEffect(() => {
+    if (!taskProject && projects.length > 0) {
+      setTaskProject(projects[0].name)
+    }
+  }, [projects, taskProject])
+
+  const resetTaskForm = () => {
+    setTaskTitle('')
+    setTaskProject(projects[0]?.name || '')
+    setTaskPriority('Medium')
+    setTaskStatus('Todo')
+    setTaskAssigneeUserId('')
+    setTaskDueDate('')
+  }
+
+  const closeTaskForm = () => {
+    setShowForm(false)
+    setEditingTask(null)
+    resetTaskForm()
+  }
+
+  const openCreateForm = () => {
+    setEditingTask(null)
+    resetTaskForm()
+    setShowForm(true)
+  }
 
   const handleCreateTask = async (e) => {
   e.preventDefault()
@@ -43,6 +85,13 @@ function Tasks({ username, onLogout }) {
   }
 
   try {
+    const selectedProject = projects.find(
+      (project) => project.name === taskProject
+    )
+    const selectedUser = users.find(
+      (user) => String(user.id) === String(taskAssigneeUserId)
+    )
+
     const response = await fetch(`${API_URL}/tasks`, {
       method: 'POST',
       headers: {
@@ -53,6 +102,10 @@ function Tasks({ username, onLogout }) {
         project: taskProject,
         priority: taskPriority,
         status: taskStatus,
+        projectId: selectedProject?.id,
+        assigneeUserId: selectedUser?.id,
+        assignedTo: selectedUser?.name,
+        dueDate: taskDueDate || null,
       }),
     })
 
@@ -67,11 +120,7 @@ function Tasks({ username, onLogout }) {
       newTask,
     ])
 
-    setTaskTitle('')
-    setTaskProject('Portfolio Website')
-    setTaskPriority('Medium')
-    setTaskStatus('Todo')
-    setShowForm(false)
+    closeTaskForm()
   } catch (error) {
     console.error('Error creating task:', error)
     alert('Unable to create task. Please try again.')
@@ -131,6 +180,168 @@ const handleDeleteTask = async (taskId) => {
   }
 }
 
+const startEditTask = (task) => {
+  setShowForm(false)
+  setEditingTask(task)
+  setTaskTitle(task.title)
+  setTaskProject(task.project)
+  setTaskPriority(task.priority)
+  setTaskStatus(task.status)
+  setTaskAssigneeUserId(task.assigneeUserId ? String(task.assigneeUserId) : '')
+  setTaskDueDate(toDateInputValue(task.dueDate))
+}
+
+const handleUpdateTask = async (e) => {
+  e.preventDefault()
+
+  if (!editingTask || !taskTitle.trim()) {
+    alert('Please enter a task title.')
+    return
+  }
+
+  try {
+    const selectedProject = projects.find(
+      (project) => project.name === taskProject
+    )
+    const selectedUser = users.find(
+      (user) => String(user.id) === String(taskAssigneeUserId)
+    )
+
+    const response = await fetch(`${API_URL}/tasks/${editingTask.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: taskTitle,
+        project: taskProject,
+        priority: taskPriority,
+        status: taskStatus,
+        projectId: selectedProject?.id || null,
+        assigneeUserId: selectedUser?.id || null,
+        assignedTo: selectedUser?.name || null,
+        dueDate: taskDueDate || null,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to update task')
+    }
+
+    setTasks((previousTasks) =>
+      previousTasks.map((task) =>
+        task.id === editingTask.id ? data : task
+      )
+    )
+
+    closeTaskForm()
+  } catch (error) {
+    console.error('Error updating task:', error)
+    alert('Unable to update task.')
+  }
+}
+
+  const renderTaskForm = () => (
+    <>
+      <div className="form-header">
+        <div>
+          <h2>{editingTask ? 'Edit Task' : 'Create New Task'}</h2>
+          <p>
+            {editingTask
+              ? 'Update task details and assignment.'
+              : 'Add a new task to your project.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="close-form-button"
+          onClick={closeTaskForm}
+        >
+          ×
+        </button>
+      </div>
+
+      <form onSubmit={editingTask ? handleUpdateTask : handleCreateTask}>
+        <label className="form-label">Task Title</label>
+        <input
+          type="text"
+          className="form-input"
+          placeholder="Enter task title"
+          value={taskTitle}
+          onChange={(e) => setTaskTitle(e.target.value)}
+        />
+
+        <label className="form-label">Project</label>
+        <select
+          className="form-select"
+          value={taskProject}
+          onChange={(e) => setTaskProject(e.target.value)}
+        >
+          {projects.map((project) => (
+            <option key={project.id} value={project.name}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+
+        <label className="form-label">Assign To</label>
+        <select
+          className="form-select"
+          value={taskAssigneeUserId}
+          onChange={(e) => setTaskAssigneeUserId(e.target.value)}
+        >
+          <option value="">Unassigned</option>
+          {users.map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.name} ({user.role})
+            </option>
+          ))}
+        </select>
+
+        <label className="form-label">Due Date</label>
+        <input
+          type="date"
+          className="form-input"
+          value={taskDueDate}
+          onChange={(e) => setTaskDueDate(e.target.value)}
+        />
+
+        <label className="form-label">Priority</label>
+        <select
+          className="form-select"
+          value={taskPriority}
+          onChange={(e) => setTaskPriority(e.target.value)}
+        >
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+
+        <label className="form-label">Status</label>
+        <select
+          className="form-select"
+          value={taskStatus}
+          onChange={(e) => setTaskStatus(e.target.value)}
+        >
+          <option>Todo</option>
+          <option>In Progress</option>
+          <option>Done</option>
+        </select>
+
+        <div className="form-actions">
+          <button type="button" className="btn-cancel" onClick={closeTaskForm}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary">
+            {editingTask ? 'Save Changes' : 'Create Task'}
+          </button>
+        </div>
+      </form>
+    </>
+  )
+
   return (
     <div className="app">
 
@@ -142,286 +353,35 @@ const handleDeleteTask = async (taskId) => {
 
       <main className="dashboard">
 
-        {/* PAGE HEADING */}
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '30px',
-            gap: '20px',
-          }}
-        >
+        <div className="page-header-row">
 
           <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: '34px',
-                fontWeight: 800,
-              }}
-            >
-              Tasks
-            </h1>
+            <h1>Tasks</h1>
 
-            <p
-              style={{
-                margin: '8px 0 0',
-                color: '#64748b',
-                fontSize: '15px',
-              }}
-            >
+            <p>
               Track and manage your development tasks.
             </p>
           </div>
 
           <button
             type="button"
-            onClick={() => setShowForm(true)}
-            style={{
-              display: 'block',
-              padding: '13px 20px',
-              border: 'none',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              boxShadow: '0 8px 20px rgba(37, 99, 235, 0.25)',
-            }}
+            className="btn-primary"
+            onClick={openCreateForm}
           >
             + Create Task
           </button>
 
         </div>
 
-        {/* CREATE TASK FORM */}
-
-        {showForm && (
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '18px',
-              padding: '25px',
-              marginBottom: '25px',
-              boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-            }}
-          >
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '20px',
-              }}
-            >
-
-              <div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: '21px',
-                  }}
-                >
-                  Create New Task
-                </h2>
-
-                <p
-                  style={{
-                    margin: '6px 0 0',
-                    color: '#64748b',
-                  }}
-                >
-                  Add a new task to your project.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                style={{
-                  border: 'none',
-                  background: '#f1f5f9',
-                  borderRadius: '8px',
-                  width: '34px',
-                  height: '34px',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                }}
-              >
-                ×
-              </button>
-
-            </div>
-
-            <form onSubmit={handleCreateTask}>
-
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '7px',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                }}
-              >
-                Task Title
-              </label>
-
-              <input
-                type="text"
-                placeholder="Enter task title"
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-                style={{
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  padding: '13px',
-                  marginBottom: '18px',
-                  border: '1px solid #dbe3ee',
-                  borderRadius: '10px',
-                  fontSize: '14px',
-                }}
-              />
-
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '7px',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                }}
-              >
-                Project
-              </label>
-
-              <select
-                value={taskProject}
-                onChange={(e) => setTaskProject(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '13px',
-                  marginBottom: '18px',
-                  border: '1px solid #dbe3ee',
-                  borderRadius: '10px',
-                  fontSize: '14px',
-                  background: '#ffffff',
-                }}
-              >
-                <option>Portfolio Website</option>
-                <option>E-Commerce Website</option>
-                <option>Task Management App</option>
-              </select>
-
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '7px',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                }}
-              >
-                Priority
-              </label>
-
-              <select
-                value={taskPriority}
-                onChange={(e) => setTaskPriority(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '13px',
-                  marginBottom: '18px',
-                  border: '1px solid #dbe3ee',
-                  borderRadius: '10px',
-                  fontSize: '14px',
-                  background: '#ffffff',
-                }}
-              >
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
-              </select>
-
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '7px',
-                  fontWeight: 700,
-                  fontSize: '13px',
-                }}
-              >
-                Status
-              </label>
-
-              <select
-                value={taskStatus}
-                onChange={(e) => setTaskStatus(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '13px',
-                  marginBottom: '20px',
-                  border: '1px solid #dbe3ee',
-                  borderRadius: '10px',
-                  fontSize: '14px',
-                  background: '#ffffff',
-                }}
-              >
-                <option>Todo</option>
-                <option>In Progress</option>
-                <option>Done</option>
-              </select>
-
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '10px',
-                }}
-              >
-
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  style={{
-                    padding: '11px 18px',
-                    border: 'none',
-                    borderRadius: '9px',
-                    background: '#f1f5f9',
-                    color: '#475569',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  style={{
-                    padding: '11px 18px',
-                    border: 'none',
-                    borderRadius: '9px',
-                    background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Create Task
-                </button>
-
-              </div>
-
-            </form>
-
-          </div>
+        {showForm && !editingTask && (
+          <div className="form-card">{renderTaskForm()}</div>
         )}
 
-        {/* SEARCH AND FILTER */}
+        {editingTask && (
+          <div className="modal-overlay">
+            <div className="modal-card form-card">{renderTaskForm()}</div>
+          </div>
+        )}
 
         <div className="task-controls">
 
@@ -444,49 +404,41 @@ const handleDeleteTask = async (taskId) => {
 
         </div>
 
-        {/* TASK LIST */}
-
 <div className="task-list">
 
   {filteredTasks.length > 0 ? (
     filteredTasks.map((task) => (
-      <div key={task.id}>
+      <div key={task.id} className="task-item-wrapper">
 
      <TaskCard
   title={task.title}
   project={task.project}
   priority={task.priority}
   status={task.status}
+  assignedTo={task.assignedTo}
+  dueDate={task.dueDate}
   onStatusChange={(newStatus) =>
     handleStatusChange(task.id, newStatus)
   }
 />
 
- 
+        <div className="card-actions">
+          <button
+            type="button"
+            className="btn-edit"
+            onClick={() => startEditTask(task)}
+          >
+            ✏ Edit
+          </button>
 
-        <button
-  onClick={() => handleDeleteTask(task.id)}
-  style={{
-    marginTop: '10px',
-    padding: '8px 14px',
-    border: '1px solid #fecaca',
-    borderRadius: '8px',
-    background: '#fff5f5',
-    color: '#2a5cc7',
-    fontSize: '13px',
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-  }}
-  onMouseEnter={(e) => {
-    e.currentTarget.style.background = '#fee2e2'
-  }}
-  onMouseLeave={(e) => {
-    e.currentTarget.style.background = '#fff5f5'
-  }}
->
-  🗑 Delete
-</button>
+          <button
+            type="button"
+            className="btn-delete"
+            onClick={() => handleDeleteTask(task.id)}
+          >
+            🗑 Delete
+          </button>
+        </div>
 
       </div>
     ))

@@ -3,13 +3,26 @@ function TaskCard({
   project,
   priority,
   status,
+  assignedTo,
+  dueDate,
   onStatusChange,
 }) {
+  const formattedDueDate = dueDate
+    ? new Date(dueDate).toLocaleDateString()
+    : null
+
   return (
     <div className="task-card">
       <div>
         <h3>{title}</h3>
         <p>{project}</p>
+        {(assignedTo || formattedDueDate) && (
+          <p className="task-meta">
+            {assignedTo ? `Assigned to: ${assignedTo}` : ''}
+            {assignedTo && formattedDueDate ? ' · ' : ''}
+            {formattedDueDate ? `Due: ${formattedDueDate}` : ''}
+          </p>
+        )}
       </div>
 
       <div className="task-info">

@@ -1,9 +1,13 @@
-function ProjectCard({ name, description, progress }) {
+import ProjectDueDate from './ProjectDueDate'
+
+function ProjectCard({ name, description, progress, dueDate }) {
   return (
     <div className="project-card">
       <h3>{name}</h3>
 
       <p>{description}</p>
+
+      <ProjectDueDate dueDate={dueDate} />
 
       <div className="progress">
         <div
