@@ -22,7 +22,6 @@ import AIAssistant from './AIAssistant'
 
 import { collectUpcomingDeadlines } from './utils/dueDate'
 
-import { API_ROOT_URL } from './config/api'
 import { apiFetch } from './utils/apiClient'
 import {
   clearAuthSession,
@@ -189,26 +188,6 @@ const [tasks, setTasks] = useState([])
     })
 
 }, [isLoggedIn])
-
-    useEffect(() => {
-
-    fetch(`${API_ROOT_URL}/`)
-
-      .then((response) => response.json())
-
-      .then((data) => {
-
-        console.log('Backend connected:', data)
-
-      })
-
-      .catch((error) => {
-
-        console.error('Backend connection failed:', error)
-
-      })
-
-  }, [])
 
 
 

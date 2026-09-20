@@ -1,4 +1,4 @@
-import { API_URL } from '../config/api'
+import API_URL from '../config/api'
 import { clearAuthSession, getAuthToken } from './auth'
 
 export async function apiFetch(path, options = {}) {
